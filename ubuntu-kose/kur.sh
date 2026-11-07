@@ -33,7 +33,7 @@ apt upgrade -y
 apt install -y --no-install-recommends \
   xfce4 xfce4-terminal xfce4-whiskermenu-plugin xfce4-taskmanager thunar mousepad ristretto \
   dbus-x11 at-spi2-core yaru-theme-gtk yaru-theme-icon fonts-ubuntu ubuntu-wallpapers \
-  plank sudo nano wget ca-certificates gpg pulseaudio-utils x11-xserver-utils onboard xvkbd yad
+  plank sudo nano wget ca-certificates gpg pulseaudio-utils x11-xserver-utils yad xdotool xinput python3-gi gir1.2-gtk-3.0
 # Firefox: Ubuntu'nun snap'i proot'ta çalışmaz, Mozilla'nın deb deposundan kur
 if ! command -v firefox >/dev/null; then
   install -d -m 0755 /etc/apt/keyrings
@@ -77,40 +77,126 @@ proot-distro login ubuntu -- bash /root/ic-kur.sh
 # İki sistemde ortak: klavye tuşu (sağ üstteki sistem tepsisinde) ve sistem değiştirme komutları
 cat > ~/.kose-ortak.sh <<'OR'
 #!/bin/bash
-# klavye-tus: ekran klavyesini aç/kapat. Onboard açılmazsa daha basit olan xvkbd'ye düşer.
-cat > /usr/local/bin/klavye-tus <<'KT'
+# Termux tarafına istek: /tmp/kose-istek (Termux'taki kose-oturum.sh dinliyor, --shared-tmp ile ortak)
+cat > /usr/local/bin/kose-istek <<'KI'
 #!/bin/bash
-if pgrep -x onboard >/dev/null; then
-  dbus-send --type=method_call --dest=org.onboard.Onboard /org/onboard/Onboard/Keyboard \
-    org.onboard.Onboard.Keyboard.ToggleVisible || pkill -x onboard
-elif pgrep -x xvkbd >/dev/null; then
-  pkill -x xvkbd
-else
-  onboard >/tmp/onboard.log 2>&1 &
-  sleep 4
-  pgrep -x onboard >/dev/null || xvkbd -compact >/dev/null 2>&1 &
-fi
-KT
+[ -p /tmp/kose-istek ] && timeout 3 bash -c 'echo "$*" > /tmp/kose-istek' _ "$@"
+KI
+# klavye-tus: telefonun kendi klavyesini (Samsung Klavye) açar/kapatır
+printf '#!/bin/bash\nexec kose-istek klavye\n' > /usr/local/bin/klavye-tus
+# kose-dokunma fare|tikla|dokunmatik: dokunma modunu değiştirir
+cat > /usr/local/bin/kose-dokunma <<'KD'
+#!/bin/bash
+case "$1" in fare|trackpad|tikla|dokunmatik) kose-istek mod "$1" ;;
+  *) echo "Kullanım: kose-dokunma fare | tikla | dokunmatik"; exit 1 ;; esac
+KD
 # kose-gec xfce|raspi: bu masaüstünü kapatır, Termux tarafındaki döngü seçilen sistemi açar
 cat > /usr/local/bin/kose-gec <<'KG'
 #!/bin/bash
 echo "$1" > /tmp/kose-gecis
 pkill -x xfce4-session; pkill -x lxsession; true
 KG
-# kose-tepsi: sağ üstteki tepside klavye simgesi. Dokun: klavye. Uzun bas / sağ tık: sistem değiştir.
+# Tepsi simgesi (beyaz klavye, koyu kenar: açık ve koyu panelde görünsün)
+mkdir -p /usr/share/kose
+cat > /usr/share/kose/klavye.svg <<'SV'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1.5" y="5" width="21" height="14" rx="2.5" fill="#fff" stroke="#222" stroke-width="1.4"/><g fill="#222"><rect x="4" y="8" width="2.4" height="2.2" rx=".5"/><rect x="7.6" y="8" width="2.4" height="2.2" rx=".5"/><rect x="11.2" y="8" width="2.4" height="2.2" rx=".5"/><rect x="14.8" y="8" width="2.4" height="2.2" rx=".5"/><rect x="18" y="8" width="2.2" height="2.2" rx=".5"/><rect x="5.6" y="11.6" width="2.4" height="2.2" rx=".5"/><rect x="9.2" y="11.6" width="2.4" height="2.2" rx=".5"/><rect x="12.8" y="11.6" width="2.4" height="2.2" rx=".5"/><rect x="16.4" y="11.6" width="2.4" height="2.2" rx=".5"/><rect x="7" y="15.2" width="10" height="2" rx=".5"/></g></svg>
+SV
+# kose-tepsi: sağ üstteki tepside klavye simgesi. Dokun: klavye. Uzun bas / sağ tık: menü.
 cat > /usr/local/bin/kose-tepsi <<'KY'
 #!/bin/bash
 pkill -f 'yad --notification' 2>/dev/null
-exec yad --notification --image=onboard --text="Klavye (uzun bas: sistem değiştir)" \
+exec yad --notification --image=/usr/share/kose/klavye.svg --text="Klavye (uzun bas: menü)" \
   --command=klavye-tus \
-  --menu="Klavye!klavye-tus|Ubuntu XFCE başlat!kose-gec xfce|Raspberry Pi OS başlat!kose-gec raspi"
+  --menu="Klavye!klavye-tus|Dokunma: Fare (trackpad)!kose-dokunma fare|Dokunma: Tıkla seç!kose-dokunma tikla|Dokunma: Dokunmatik (tek parmakla kaydır)!kose-dokunma dokunmatik|Ubuntu XFCE başlat!kose-gec xfce|Raspberry Pi OS başlat!kose-gec raspi"
 KY
-chmod +x /usr/local/bin/klavye-tus /usr/local/bin/kose-gec /usr/local/bin/kose-tepsi
+# kose-uclu: yazıya 3 kez dokununca hepsini seçer, üstte Android gibi Kes/Kopyala/Yapıştır çıkar
+cat > /usr/local/bin/kose-uclu <<'PYU'
+#!/usr/bin/env python3
+import subprocess, threading, time, gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk, GLib
+
+CSS = b'''
+#kmenu { background: #2b2b2b; border-radius: 22px; padding: 4px 6px; }
+#kmenu button { background: none; border: none; box-shadow: none; color: #fff;
+  font-size: 15px; padding: 8px 14px; border-radius: 16px; }
+#kmenu button:hover, #kmenu button:active { background: #4a4a4a; }
+'''
+
+def tus(k):
+    subprocess.Popen(['xdotool', 'key', '--clearmodifiers', k])
+
+class Menu(Gtk.Window):
+    def __init__(self):
+        # POPUP: pencere yöneticisi dokunmaz, odağı çalmaz; kısayol tuşları alttaki uygulamaya gider
+        super().__init__(type=Gtk.WindowType.POPUP)
+        self.set_name('kmenu')
+        scr = self.get_screen()
+        kutu = Gtk.Box(spacing=2); self.add(kutu)
+        for ad, k in (('Kes', 'ctrl+x'), ('Kopyala', 'ctrl+c'), ('Yapıştır', 'ctrl+v'), ('Tümünü seç', 'ctrl+a')):
+            d = Gtk.Button(label=ad); d.connect('clicked', self.bas, k); kutu.pack_start(d, False, False, 0)
+        p = Gtk.CssProvider(); p.load_from_data(CSS)
+        Gtk.StyleContext.add_provider_for_screen(scr, p, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        self.zaman = None
+
+    def bas(self, _d, k):
+        self.hide()
+        GLib.timeout_add(120, lambda: (tus(k), False)[1])
+
+    def goster(self):
+        tus('ctrl+a')
+        ekran = Gdk.Display.get_default()
+        _, x, y = ekran.get_default_seat().get_pointer().get_position()
+        self.show_all()
+        w, h = self.get_size()
+        sw = self.get_screen().get_width()
+        self.move(max(4, min(x - w // 2, sw - w - 4)), max(4, y - h - 40))
+        if self.zaman: GLib.source_remove(self.zaman)
+        self.zaman = GLib.timeout_add(6000, lambda: (self.hide(), False)[1])
+        return False
+
+menu = Menu()
+
+def dinle():
+    # XInput2 ham olayları: fare tıklaması (RawButtonPress, sol tuş) ya da parmak (RawTouchBegin)
+    while True:
+        try:
+            pr = subprocess.Popen(['stdbuf', '-oL', 'xinput', 'test-xi2', '--root'], stdout=subprocess.PIPE, text=True)
+        except Exception:
+            time.sleep(5); continue
+        bekle, son, dokunuslar = None, 0, []
+        for satir in pr.stdout:
+            if '(RawButtonPress)' in satir: bekle = 'tus'; continue
+            if '(RawTouchBegin)' in satir: bekle = None; olay = True
+            elif bekle == 'tus' and satir.strip().startswith('detail:'):
+                olay = satir.split()[1] == '1'; bekle = None
+            else: continue
+            if not olay: continue
+            t = time.monotonic()
+            if t - son < 0.05: continue      # aynı dokunuşun hem touch hem tık hâli
+            son = t
+            dokunuslar = [d for d in dokunuslar if t - d < 0.75] + [t]
+            if len(dokunuslar) >= 3:
+                dokunuslar = []
+                GLib.timeout_add(200, menu.goster)
+        time.sleep(2)
+
+threading.Thread(target=dinle, daemon=True).start()
+Gtk.main()
+PYU
+chmod +x /usr/local/bin/kose-istek /usr/local/bin/klavye-tus /usr/local/bin/kose-dokunma /usr/local/bin/kose-gec /usr/local/bin/kose-tepsi /usr/local/bin/kose-uclu
 mkdir -p /root/.config/autostart
 printf '[Desktop Entry]\nType=Application\nName=Klavye tuşu\nExec=kose-tepsi\n' > /root/.config/autostart/kose-tepsi.desktop
+printf '[Desktop Entry]\nType=Application\nName=Üç dokunuşla seç\nExec=kose-uclu\n' > /root/.config/autostart/kose-uclu.desktop
+# Firefox dokunmayla (tek parmak) kaysın
+grep -q MOZ_USE_XINPUT2 /etc/environment 2>/dev/null || echo MOZ_USE_XINPUT2=1 >> /etc/environment
 # Menüde de dursunlar
+rm -f /usr/share/applications/kose-*.desktop
 yaz() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\nCategories=System;Utility;\n' "$2" "$3" "$4" > /usr/share/applications/$1.desktop; }
-yaz kose-klavye "Ekran Klavyesi" klavye-tus onboard
+yaz kose-klavye "Klavye (telefonun)" klavye-tus /usr/share/kose/klavye.svg
+yaz kose-fare "Dokunma: Fare (trackpad)" "kose-dokunma fare" input-mouse
+yaz kose-tikla "Dokunma: Tıkla seç" "kose-dokunma tikla" input-tablet
+yaz kose-dokunmatik "Dokunma: Dokunmatik" "kose-dokunma dokunmatik" input-tablet
 yaz kose-xfce "Ubuntu XFCE'ye geç" "kose-gec xfce" system-reboot
 yaz kose-raspi "Raspberry Pi OS'a geç" "kose-gec raspi" system-reboot
 OR
@@ -119,7 +205,7 @@ proot-distro login ubuntu -- bash /root/ortak.sh
 
 icine /root/masaustu.sh <<'MS'
 #!/bin/bash
-export DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 XDG_RUNTIME_DIR=/tmp/runtime-root
+export DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 XDG_RUNTIME_DIR=/tmp/runtime-root MOZ_USE_XINPUT2=1
 mkdir -p $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
 # duvar kağıdı DBus oturumunun İÇİNDE ayarlanmalı, dışarıdan xfconf-query boşa gider.
 # xfdesktop ayarı monitör adına bağlı, adı açıldıktan sonra xrandr'dan öğren.
@@ -132,9 +218,6 @@ for m in $(xrandr --listmonitors 2>/dev/null | awk 'NR>1{print $NF}') screen 0; 
     xfconf-query -c xfce4-desktop -n -t int -p /backdrop/screen0/monitor$m/workspace$w/image-style -s 5
   done
 done
-# Onboard ekranın altına yapışık açılsın, kendi yüzen simgesi çıkmasın
-gsettings set org.onboard.window docking-enabled true 2>/dev/null
-gsettings set org.onboard.icon-palette in-use false 2>/dev/null
 # Ubuntu düzeni: tek dock solda (Plank), XFCE'nin alttaki ikinci paneli kalksın
 xfconf-query -c xfce4-panel -p /panels -t int -s 1 -a && xfce4-panel -r
 gsettings set net.launchpad.plank.dock.settings:/net/launchpad/plank/docks/dock1/ position left
@@ -155,9 +238,12 @@ echo "=== $(date) başlat ($(cat ~/.kose-masaustu 2>/dev/null || echo xfce)) ===
 # Termux:X11 ayarı pencere açıkken yazılabiliyor, o yüzden biraz bekleyip arka planda.
 # Yazım anahtar:değer; anahtar=değer sessizce yok sayılıyor.
 # hideCutout: kamera deliği şeridini de kullan; ek tuş çubuğu gizli (geri tuşu açar/kapatır)
+# touchMode: 1 fare (trackpad), 2 tıkla seç, 3 dokunmatik. Son seçilen ~/.kose-dokunma'da.
+# swipeUpAction: üç parmakla yukarı kaydır = telefonun klavyesi; tepsideki tuş da bu eylemi tetikliyor.
+case "$(cat ~/.kose-dokunma 2>/dev/null)" in fare|trackpad) TM=1 ;; dokunmatik) TM=3 ;; *) TM=2 ;; esac
 ( sleep 3; timeout 20 termux-x11-preference forceOrientation:landscape fullscreen:true \
     displayResolutionMode:scaled displayScale:150 hideCutout:true additionalKbdVisible:false \
-    >/dev/null 2>&1 ) &
+    touchMode:$TM "swipeUpAction:toggle soft keyboard" >/dev/null 2>&1 ) &
 pgrep -f 'com.termux.x11 :0' >/dev/null && { wait; exit 0; }
 pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
   --exit-idle-time=-1 >/dev/null 2>&1
@@ -168,6 +254,20 @@ BS
 cat > ~/kose-oturum.sh <<'KO'
 #!/data/data/com.termux/files/usr/bin/bash
 R=$(cat ~/.kose-raspi-ad 2>/dev/null || echo raspi)
+# Masaüstünden gelen istekler (/tmp/kose-istek): klavye aç/kapat, dokunma modu
+F=$TMPDIR/kose-istek; rm -f "$F"; mkfifo "$F"
+( while true; do
+    while read -r k a; do
+      case "$k" in
+        klavye) am broadcast -a com.termux.x11.ACTION_CUSTOM --es what swipeUp -p com.termux.x11 >/dev/null 2>&1 ;;
+        mod) case "$a" in fare|trackpad) m=1 ;; dokunmatik) m=3 ;; *) m=2 ;; esac
+             echo "$a" > ~/.kose-dokunma
+             timeout 20 termux-x11-preference touchMode:$m >/dev/null 2>&1 ;;
+      esac
+    done < "$F"
+  done ) &
+DINLE=$!
+trap 'kill $DINLE 2>/dev/null; rm -f "$F"' EXIT
 while true; do
   rm -f "$TMPDIR/kose-gecis"
   if [ "$(cat ~/.kose-masaustu 2>/dev/null)" = raspi ] && proot-distro login "$R" -- test -f /root/masaustu.sh; then
@@ -212,7 +312,7 @@ apt update
 apt upgrade -y
 apt install -y --no-install-recommends \
   lxde-core lxterminal lxappearance mousepad dbus-x11 at-spi2-core firefox-esr \
-  sudo nano wget ca-certificates gpg pulseaudio-utils x11-xserver-utils onboard xvkbd yad || exit 1
+  sudo nano wget ca-certificates gpg pulseaudio-utils x11-xserver-utils yad xdotool xinput python3-gi gir1.2-gtk-3.0 || exit 1
 # Raspberry Pi deposu (PIXEL masaüstü, tema, ikon, duvar kağıdı). Ulaşılamazsa sade LXDE kalır.
 . /etc/os-release
 if wget -qO- https://archive.raspberrypi.com/debian/raspberrypi.gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/raspberrypi.gpg; then
@@ -240,14 +340,12 @@ RI
   proot-distro login $R -- bash /root/ortak.sh
   HEDEF=$R icine /root/masaustu.sh <<'RM'
 #!/bin/bash
-export DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 XDG_RUNTIME_DIR=/tmp/runtime-root
+export DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 XDG_RUNTIME_DIR=/tmp/runtime-root MOZ_USE_XINPUT2=1
 mkdir -p $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
 cat > /tmp/raspi-ayar.sh <<'RA'
 sleep 6
 img=$(ls /usr/share/rpd-wallpaper/*.jpg /usr/share/rpd-wallpaper/*.png 2>/dev/null | head -1)
 [ -n "$img" ] && pcmanfm --set-wallpaper="$img" --wallpaper-mode=crop
-gsettings set org.onboard.window docking-enabled true 2>/dev/null
-gsettings set org.onboard.icon-palette in-use false 2>/dev/null
 RA
 # Gerçek Raspberry Pi oturumu varsa onu, yoksa LXDE'yi aç
 if command -v startlxde-pi >/dev/null; then OT=startlxde-pi; else OT=startlxde; fi
