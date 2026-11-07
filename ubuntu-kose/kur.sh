@@ -104,15 +104,47 @@ SV
 # kose-tepsi: sağ üstteki tepside klavye simgesi. Dokun: klavye. Uzun bas / sağ tık: menü.
 cat > /usr/local/bin/kose-tepsi <<'KY'
 #!/bin/bash
+[ -f /root/.config/kose/tepsi-kapali ] && exit 0
 pkill -f 'yad --notification' 2>/dev/null
 exec yad --notification --image=/usr/share/kose/klavye.svg --text="Klavye (uzun bas: menü)" \
   --command=klavye-tus \
-  --menu="Klavye!klavye-tus|Dokunma: Fare (trackpad)!kose-dokunma fare|Dokunma: Tıkla seç!kose-dokunma tikla|Dokunma: Dokunmatik (tek parmakla kaydır)!kose-dokunma dokunmatik|Ubuntu XFCE başlat!kose-gec xfce|Raspberry Pi OS başlat!kose-gec raspi"
+  --menu="Klavye!klavye-tus|Köşe Ayarları!kose-ayarlar|Dokunma: Fare (trackpad)!kose-dokunma fare|Dokunma: Tıkla seç!kose-dokunma tikla|Dokunma: Dokunmatik (tek parmakla kaydır)!kose-dokunma dokunmatik|Ubuntu XFCE başlat!kose-gec xfce|Raspberry Pi OS başlat!kose-gec raspi"
 KY
+# kose-ayarlar: Ayarlar (Preferences) menüsündeki Köşe Ayarları penceresi
+cat > /usr/local/bin/kose-ayarlar <<'KA'
+#!/bin/bash
+A=/root/.config/kose; mkdir -p $A
+mod=$(cat /tmp/kose-dokunma 2>/dev/null); sis=$(cat /tmp/kose-masaustu 2>/dev/null)
+sec() { local o="" x; for x in "$@"; do [ "${x%%|*}" = "$SECILI" ] && o+="^"; o+="${x#*|}!"; done; echo "${o%!}"; }
+SECILI=${mod:-tikla}; MODLAR=$(sec "fare|Fare (trackpad)" "tikla|Tıkla seç" "dokunmatik|Dokunmatik (tek parmakla kaydır)")
+SECILI=${sis:-xfce};  SISLER=$(sec "xfce|Ubuntu XFCE" "raspi|Raspberry Pi OS")
+[ -f $A/uclu-kapali ] && U=FALSE || U=TRUE
+[ -f $A/tepsi-kapali ] && T=FALSE || T=TRUE
+c=$(yad --form --title="Köşe Ayarları" --window-icon=/usr/share/kose/klavye.svg --width=460 --center \
+  --text="<b>Ubuntu Köşe</b>  ·  dokunma, klavye ve sistem" \
+  --field="Dokunma modu:CB" "$MODLAR" \
+  --field="Üç kez dokununca tümünü seç ve Kopyala menüsü:CHK" "$U" \
+  --field="Sağ üstte klavye tuşu:CHK" "$T" \
+  --field="Açılışta başlayan sistem:CB" "$SISLER" \
+  --field="Klavyeyi şimdi aç/kapat:FBTN" "klavye-tus" \
+  --button="Vazgeç:1" --button="Kaydet:0") || exit 0
+IFS='|' read -r m u t s _ <<< "$c"
+case "$m" in Fare*) m=fare ;; Dokunmatik*) m=dokunmatik ;; *) m=tikla ;; esac
+[ "$m" != "$mod" ] && kose-istek mod $m
+[ "$u" = TRUE ] && rm -f $A/uclu-kapali || touch $A/uclu-kapali
+if [ "$t" = TRUE ]; then rm -f $A/tepsi-kapali; pgrep -f 'yad --notification' >/dev/null || (kose-tepsi >/dev/null 2>&1 &)
+else touch $A/tepsi-kapali; pkill -f 'yad --notification'; fi
+case "$s" in Raspberry*) s=raspi ;; *) s=xfce ;; esac
+if [ "$s" != "$sis" ]; then
+  kose-istek sistem $s
+  yad --question --title="Köşe Ayarları" --center --text="Şimdi $( [ $s = raspi ] && echo 'Raspberry Pi OS' || echo 'Ubuntu XFCE' )'a geçilsin mi?" \
+    --button="Sonra:1" --button="Şimdi geç:0" && kose-gec $s
+fi
+KA
 # kose-uclu: yazıya 3 kez dokununca hepsini seçer, üstte Android gibi Kes/Kopyala/Yapıştır çıkar
 cat > /usr/local/bin/kose-uclu <<'PYU'
 #!/usr/bin/env python3
-import subprocess, threading, time, gi
+import os, subprocess, threading, time, gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GLib
 
@@ -178,13 +210,14 @@ def dinle():
             dokunuslar = [d for d in dokunuslar if t - d < 0.75] + [t]
             if len(dokunuslar) >= 3:
                 dokunuslar = []
-                GLib.timeout_add(200, menu.goster)
+                if not os.path.exists('/root/.config/kose/uclu-kapali'):
+                    GLib.timeout_add(200, menu.goster)
         time.sleep(2)
 
 threading.Thread(target=dinle, daemon=True).start()
 Gtk.main()
 PYU
-chmod +x /usr/local/bin/kose-istek /usr/local/bin/klavye-tus /usr/local/bin/kose-dokunma /usr/local/bin/kose-gec /usr/local/bin/kose-tepsi /usr/local/bin/kose-uclu
+chmod +x /usr/local/bin/kose-ayarlar /usr/local/bin/kose-istek /usr/local/bin/klavye-tus /usr/local/bin/kose-dokunma /usr/local/bin/kose-gec /usr/local/bin/kose-tepsi /usr/local/bin/kose-uclu
 mkdir -p /root/.config/autostart
 printf '[Desktop Entry]\nType=Application\nName=Klavye tuşu\nExec=kose-tepsi\n' > /root/.config/autostart/kose-tepsi.desktop
 printf '[Desktop Entry]\nType=Application\nName=Üç dokunuşla seç\nExec=kose-uclu\n' > /root/.config/autostart/kose-uclu.desktop
@@ -192,11 +225,10 @@ printf '[Desktop Entry]\nType=Application\nName=Üç dokunuşla seç\nExec=kose-
 grep -q MOZ_USE_XINPUT2 /etc/environment 2>/dev/null || echo MOZ_USE_XINPUT2=1 >> /etc/environment
 # Menüde de dursunlar
 rm -f /usr/share/applications/kose-*.desktop
-yaz() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\nCategories=System;Utility;\n' "$2" "$3" "$4" > /usr/share/applications/$1.desktop; }
+yaz() { printf '[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nIcon=%s\nCategories=%s\n' "$2" "$3" "$4" "${5:-System;Utility;}" > /usr/share/applications/$1.desktop; }
+# Raspberry Pi OS'ta Menü > Preferences, XFCE'de Ayarlar Yöneticisi ve Menü > Ayarlar
+yaz kose-ayarlar "Köşe Ayarları" kose-ayarlar /usr/share/kose/klavye.svg "Settings;DesktopSettings;X-XFCE-SettingsDialog;X-XFCE-PersonalSettings;GTK;"
 yaz kose-klavye "Klavye (telefonun)" klavye-tus /usr/share/kose/klavye.svg
-yaz kose-fare "Dokunma: Fare (trackpad)" "kose-dokunma fare" input-mouse
-yaz kose-tikla "Dokunma: Tıkla seç" "kose-dokunma tikla" input-tablet
-yaz kose-dokunmatik "Dokunma: Dokunmatik" "kose-dokunma dokunmatik" input-tablet
 yaz kose-xfce "Ubuntu XFCE'ye geç" "kose-gec xfce" system-reboot
 yaz kose-raspi "Raspberry Pi OS'a geç" "kose-gec raspi" system-reboot
 OR
@@ -256,19 +288,23 @@ cat > ~/kose-oturum.sh <<'KO'
 R=$(cat ~/.kose-raspi-ad 2>/dev/null || echo raspi)
 # Masaüstünden gelen istekler (/tmp/kose-istek): klavye aç/kapat, dokunma modu
 F=$TMPDIR/kose-istek; rm -f "$F"; mkfifo "$F"
+# Ayarlar penceresi şu anki seçimleri görsün (/tmp ortak)
+cp ~/.kose-dokunma "$TMPDIR/kose-dokunma" 2>/dev/null
 ( while true; do
     while read -r k a; do
       case "$k" in
         klavye) am broadcast -a com.termux.x11.ACTION_CUSTOM --es what swipeUp -p com.termux.x11 >/dev/null 2>&1 ;;
         mod) case "$a" in fare|trackpad) m=1 ;; dokunmatik) m=3 ;; *) m=2 ;; esac
-             echo "$a" > ~/.kose-dokunma
+             echo "$a" > ~/.kose-dokunma; echo "$a" > "$TMPDIR/kose-dokunma"
              timeout 20 termux-x11-preference touchMode:$m >/dev/null 2>&1 ;;
+        sistem) case "$a" in raspi|xfce) echo "$a" > ~/.kose-masaustu; echo "$a" > "$TMPDIR/kose-masaustu" ;; esac ;;
       esac
     done < "$F"
   done ) &
 DINLE=$!
 trap 'kill $DINLE 2>/dev/null; rm -f "$F"' EXIT
 while true; do
+  cp ~/.kose-masaustu "$TMPDIR/kose-masaustu" 2>/dev/null
   rm -f "$TMPDIR/kose-gecis"
   if [ "$(cat ~/.kose-masaustu 2>/dev/null)" = raspi ] && proot-distro login "$R" -- test -f /root/masaustu.sh; then
     proot-distro login "$R" --shared-tmp -- bash /root/masaustu.sh
