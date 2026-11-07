@@ -1,14 +1,18 @@
-# Usage: paketle.py orig.apk replace_name replace_file key.pem cert.der out.apk
+# Usage: paketle.py orig.apk key.pem cert.der out.apk name=file [name=file ...]
+#   name orijinalde varsa içeriği değişir, yoksa sona eklenir.
 import sys, zipfile, struct, hashlib, io
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-src, rname, rfile, keyf, certf, out = sys.argv[1:7]
+src, keyf, certf, out = sys.argv[1:5]
+degis = dict(a.split('=', 1) for a in sys.argv[5:])
 # 1) rebuild zip, 4-byte align STORED entries
 zi = zipfile.ZipFile(src)
 buf = io.BytesIO()
 zo = zipfile.ZipFile(buf, 'w')
-for info in zi.infolist():
-    data = open(rfile,'rb').read() if info.filename == rname else zi.read(info)
+yeni = [zipfile.ZipInfo(n, date_time=(1981,1,1,1,1,2)) for n in degis if n not in zi.namelist()]
+for ni in yeni: ni.compress_type = zipfile.ZIP_DEFLATED
+for info in zi.infolist() + yeni:
+    data = open(degis[info.filename],'rb').read() if info.filename in degis else zi.read(info)
     ni = zipfile.ZipInfo(info.filename, date_time=info.date_time)
     ni.compress_type = info.compress_type; ni.external_attr = info.external_attr
     ni.create_system = info.create_system
