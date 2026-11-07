@@ -335,47 +335,89 @@ KS
 chmod +x ~/ubuntu-baslat.sh ~/kose-oturum.sh $PREFIX/bin/kose-sec
 [ -f ~/.kose-masaustu ] || echo xfce > ~/.kose-masaustu
 
-# 5) Raspberry Pi OS: Debian + Raspberry Pi'nin kendi deposundan masaüstü görünümü.
-# Bir hata Ubuntu'yu bozmasın diye ayrı ve hataya dayanıklı.
-raspi_kur() {
-  R=raspi
-  if ! proot-distro login raspi -- true 2>/dev/null; then
-    proot-distro install --override-alias raspi debian || {
-      R=debian; proot-distro login debian -- true 2>/dev/null || proot-distro install debian; }
+# 5) Raspberry Pi OS: resmi imaj (2026-10-06-raspios-trixie-arm64), Debian değil.
+# İmaj torrent'le iner (parçalar torrent hash'iyle doğrulanır), kök bölümü root izni olmadan
+# debugfs ile proot-distro'nun dizinine açılır. Bir hata Ubuntu'yu bozmasın diye ayrı.
+RPI_AD=raspios
+RPI_IMG=2026-10-06-raspios-trixie-arm64.img.xz
+RPI_MAGNET="magnet:?xt=urn:btih:7d5da21fcc4ec00158c76de303441aaefc45610d&dn=$RPI_IMG&tr=http%3A%2F%2Ftracker.raspberrypi.org%3A6969%2Fannounce"
+RPI_YEDEK=https://downloads.raspberrypi.com/raspios_arm64_latest
+RPI_KOK=$PREFIX/var/lib/proot-distro/installed-rootfs/$RPI_AD   # yeni proot-distro ilk girişte containers/'a taşır
+
+raspi_imaj() {
+  [ -f ~/.kose-raspios-tamam ] && return 0
+  local D=~/raspios-indir; mkdir -p "$D"
+  local bos=$(df -Pk "$D" | awk 'NR==2{print $4}')
+  if [ "${bos:-0}" -lt $((12*1024*1024)) ] && [ ! -d "$RPI_KOK/usr" ]; then
+    echo -e "\e[1;31mRaspberry Pi OS için en az 12 GB boş yer lazım (şu an $((bos/1024/1024)) GB).\e[0m"; return 1
   fi
+  pkg install -y aria2 e2fsprogs xz-utils >/dev/null || return 1
+  if [ ! -f "$D/$RPI_IMG" ] || [ -f "$D/$RPI_IMG.aria2" ]; then
+    echo -e "\e[1;33m== Raspberry Pi OS imajı iniyor (1,3 GB, torrent) ==\e[0m"
+    aria2c --dir="$D" --seed-time=0 --bt-stop-timeout=600 --file-allocation=none --summary-interval=20 \
+      --console-log-level=warn --bt-save-metadata=false "$RPI_MAGNET" || true
+  fi
+  if [ ! -f "$D/$RPI_IMG" ] || [ -f "$D/$RPI_IMG.aria2" ]; then
+    echo -e "\e[1;33mTorrent olmadı, Raspberry Pi sitesinden en güncel imaj iniyor...\e[0m"
+    rm -f "$D/$RPI_IMG" "$D/$RPI_IMG.aria2"
+    aria2c --dir="$D" --out="$RPI_IMG" -x4 --file-allocation=none --summary-interval=20 \
+      --console-log-level=warn "$RPI_YEDEK" || return 1
+  fi
+  echo "İmaj kontrol ediliyor..."; xz -t "$D/$RPI_IMG" || { rm -f "$D/$RPI_IMG"; return 1; }
+  # MBR'den 2. bölüm (rootfs): başlangıç ve boyut (512 baytlık sektör)
+  xz -dc "$D/$RPI_IMG" 2>/dev/null | head -c 512 > "$D/mbr"
+  set -- $(od -A n -t u4 -j 470 -N 8 "$D/mbr")
+  local bas=$1 boy=$2
+  [ "${boy:-0}" -gt 0 ] || { echo "Bölüm tablosu okunamadı"; return 1; }
+  echo -e "\e[1;33m== Kök bölümü çıkarılıyor ($((boy/2048)) MB) ==\e[0m"
+  xz -dc "$D/$RPI_IMG" | dd of="$D/kok.ext4" bs=4M iflag=fullblock,skip_bytes,count_bytes \
+    skip=$((bas*512)) count=$((boy*512)) status=progress || return 1
+  rm -f "$D/$RPI_IMG"
+  echo -e "\e[1;33m== Dosyalar açılıyor (10-20 dk sürebilir) ==\e[0m"
+  chmod -R u+w "$RPI_KOK" "$PREFIX/var/lib/proot-distro/containers/$RPI_AD" 2>/dev/null
+  rm -rf "$RPI_KOK" "$PREFIX/var/lib/proot-distro/containers/$RPI_AD"; mkdir -p "$RPI_KOK"
+  debugfs -R "ls -p /" "$D/kok.ext4" 2>/dev/null | awk -F/ 'NF>5 && $6!="." && $6!=".." && $6!="lost+found" {print $6}' |
+  while read -r g; do debugfs -R "rdump \"/$g\" \"$RPI_KOK\"" "$D/kok.ext4" >/dev/null 2>&1; done
+  [ -x "$RPI_KOK/usr/bin/apt" ] || { echo "Açma başarısız"; return 1; }
+  rm -rf "$D"
+  # proot-distro'nun kurulumda yaptıkları: DNS, hosts, Android grupları
+  printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > "$RPI_KOK/etc/resolv.conf"
+  printf '127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n' > "$RPI_KOK/etc/hosts"
+  for g in $(id -G); do grep -q ":$g:" "$RPI_KOK/etc/group" || echo "aid_$g:x:$g:root" >> "$RPI_KOK/etc/group"; done
+  # eski (bash) proot-distro dağıtımı ancak eklenti dosyasıyla tanır
+  mkdir -p $PREFIX/etc/proot-distro
+  [ -d $PREFIX/etc/proot-distro ] && printf 'DISTRO_NAME="Raspberry Pi OS (trixie)"\nDISTRO_COMMENT="Ubuntu Köşe"\n' > $PREFIX/etc/proot-distro/$RPI_AD.sh
+  touch ~/.kose-raspios-tamam
+}
+
+raspi_kur() {
+  raspi_imaj || return 1
+  R=$RPI_AD
   echo $R > ~/.kose-raspi-ad
+  # Önceki denemeden kalan Debian tabanlı "raspi" kabını sil (yer açar)
+  proot-distro remove raspi >/dev/null 2>&1 || true
   HEDEF=$R icine /root/ic-raspi.sh <<'RI'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 apt update
-apt upgrade -y
-apt install -y --no-install-recommends \
-  lxde-core lxterminal lxappearance mousepad dbus-x11 at-spi2-core firefox-esr \
-  sudo nano wget ca-certificates gpg pulseaudio-utils x11-xserver-utils yad xdotool xinput python3-gi gir1.2-gtk-3.0 || exit 1
-# Raspberry Pi deposu (PIXEL masaüstü, tema, ikon, duvar kağıdı). Ulaşılamazsa sade LXDE kalır.
-. /etc/os-release
-if wget -qO- https://archive.raspberrypi.com/debian/raspberrypi.gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/raspberrypi.gpg; then
-  echo "deb [signed-by=/usr/share/keyrings/raspberrypi.gpg] https://archive.raspberrypi.com/debian $VERSION_CODENAME main" \
-    > /etc/apt/sources.list.d/raspi.list
-  apt update || { rm -f /etc/apt/sources.list.d/raspi.list; apt update; }
+# İmajda ilk açılışta kullanıcı oluşturan sihirbaz var; proot'ta gerek yok
+apt purge -y piwiz userconf-pi 2>/dev/null || true
+# X11 masaüstü (Pi'nin kendi oturumu) + Köşe araçları
+apt install -y --no-install-recommends openbox lxsession lxpanel-pi pcmanfm lxterminal \
+  dbus-x11 at-spi2-core sudo git wget ca-certificates gpg libglib2.0-bin \
+  pulseaudio-utils x11-xserver-utils yad xdotool xinput python3-gi gir1.2-gtk-3.0 \
+  || apt install -y --no-install-recommends openbox lxsession lxpanel pcmanfm lxterminal \
+     dbus-x11 sudo git wget yad xdotool xinput python3-gi gir1.2-gtk-3.0 || exit 1
+# Pi oturumu (LXDE-pi) yoksa aynısını kullanıcı ayarıyla kur
+if [ ! -d /etc/xdg/lxsession/LXDE-pi ]; then
+  mkdir -p /root/.config/lxsession/LXDE-pi
+  printf '[Session]\nwindow_manager=openbox\n' > /root/.config/lxsession/LXDE-pi/desktop.conf
+  P=$(command -v lxpanel-pi >/dev/null && echo lxpanel-pi || echo "lxpanel --profile LXDE-pi")
+  printf '@%s\n@pcmanfm --desktop --profile LXDE-pi\n' "$P" > /root/.config/lxsession/LXDE-pi/autostart
 fi
-# Paketleri tek tek dene: biri yoksa ya da proot'ta kurulamazsa geri al, devam et
-for p in rpd-wallpaper rpd-icons rpd-theme pixflat-icons pixflat-theme lxpanel-pi lxde-pi-rc; do
-  apt install -y --no-install-recommends $p || { apt purge -y $p; dpkg --configure -a; } || true
-done
-# Raspberry Pi gibi: panel üstte. lxde-pi yoksa LXDE panelini üste taşı.
-mkdir -p /root/.config/lxpanel/LXDE/panels /root/.config/gtk-3.0
-[ -f /etc/xdg/lxpanel/LXDE/panels/panel ] && sed 's/edge=bottom/edge=top/' /etc/xdg/lxpanel/LXDE/panels/panel \
-  > /root/.config/lxpanel/LXDE/panels/panel
 # Pi-Apps root ile çalışmıyor: şifresiz sudo'lu "pi" kullanıcısı
 id pi >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo pi
 echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/pi && chmod 440 /etc/sudoers.d/pi
-apt install -y --no-install-recommends git lxterminal libglib2.0-bin || true
-for t in PiXflat PiXnoir; do
-  if [ -d /usr/share/themes/$t ]; then
-    printf '[Settings]\ngtk-theme-name=%s\ngtk-icon-theme-name=PiXflat\n' $t > /root/.config/gtk-3.0/settings.ini; break
-  fi
-done
 exit 0
 RI
   proot-distro login $R -- bash /root/ic-raspi.sh || return 1
@@ -387,7 +429,7 @@ RI
   proot-distro login $R --user pi -- bash -c 'cd ~ && wget -qO /tmp/piapps-kur https://raw.githubusercontent.com/Botspot/pi-apps/master/install && bash /tmp/piapps-kur' || true
   if proot-distro login $R -- test -x /home/pi/pi-apps/gui; then
     proot-distro login $R -- bash -c 'printf "[Desktop Entry]\nType=Application\nName=Pi-Apps\nComment=Raspberry Pi uygulama mağazası\nExec=kose-istek piapps\nIcon=/home/pi/pi-apps/icons/logo.png\nCategories=Utility;System;PackageManager;\n" > /usr/share/applications/pi-apps-kose.desktop; mkdir -p /root/Desktop; cp /usr/share/applications/pi-apps-kose.desktop /root/Desktop/; chmod +x /root/Desktop/pi-apps-kose.desktop'
-    echo -e "\e[1;32mPi-Apps hazır (Menü > Accessories / masaüstü simgesi).\e[0m"
+    echo -e "\e[1;32mPi-Apps hazır.\e[0m"
   else
     echo -e "\e[1;31mPi-Apps kurulamadı, Raspberry Pi OS yine çalışır.\e[0m"
   fi
@@ -395,21 +437,16 @@ RI
 #!/bin/bash
 export DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 XDG_RUNTIME_DIR=/tmp/runtime-root MOZ_USE_XINPUT2=1
 mkdir -p $XDG_RUNTIME_DIR && chmod 700 $XDG_RUNTIME_DIR
-cat > /tmp/raspi-ayar.sh <<'RA'
-sleep 6
-img=$(ls /usr/share/rpd-wallpaper/*.jpg /usr/share/rpd-wallpaper/*.png 2>/dev/null | head -1)
-[ -n "$img" ] && pcmanfm --set-wallpaper="$img" --wallpaper-mode=crop
-RA
-# Gerçek Raspberry Pi oturumu varsa onu, yoksa LXDE'yi aç
-if command -v startlxde-pi >/dev/null; then OT=startlxde-pi; else OT=startlxde; fi
-exec dbus-launch --exit-with-session bash -c "(bash /tmp/raspi-ayar.sh &); exec $OT"
+# Raspberry Pi'nin kendi X11 masaüstü (Raspberry Pi Desktop on X)
+if command -v startlxde-pi >/dev/null; then OT=startlxde-pi; else OT="lxsession -s LXDE-pi -e LXDE"; fi
+exec dbus-launch --exit-with-session bash -c "exec $OT"
 RM
 }
-echo -e "\e[1;33m== Raspberry Pi OS kuruluyor (~1 GB daha) ==\e[0m"
+echo -e "\e[1;33m== Raspberry Pi OS kuruluyor ==\e[0m"
 if raspi_kur; then
   echo -e "\e[1;32mRaspberry Pi OS hazır. Geçmek için: kose-sec raspi\e[0m"
 else
-  echo -e "\e[1;31mRaspberry Pi OS kurulamadı, Ubuntu XFCE yine çalışır. Tekrar denemek için kurulumu yeniden çalıştır.\e[0m"
+  echo -e "\e[1;31mRaspberry Pi OS kurulamadı, Ubuntu XFCE yine çalışır. Tekrar denemek için kurulumu yeniden çalıştır (inen kısım korunur).\e[0m"
 fi
 
 termux-wake-unlock 2>/dev/null || true
