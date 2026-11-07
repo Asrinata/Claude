@@ -140,6 +140,13 @@ public class X11Tus {
         Toast.makeText(srv, s.equals("raspi") ? "Raspberry Pi OS açılıyor…" : "Ubuntu XFCE açılıyor…", Toast.LENGTH_SHORT).show();
     }
 
+    /** Pi-Apps Raspberry Pi OS'taki "pi" kullanıcısında kurulu; açık ekranda (DISPLAY=:0) onu açar. */
+    static void piApps() {
+        Toast.makeText(srv, "Pi-Apps açılıyor…", Toast.LENGTH_SHORT).show();
+        termux("R=$(cat ~/.kose-raspi-ad 2>/dev/null || echo raspi); "
+                + "proot-distro login $R --user pi --shared-tmp -- env DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 /home/pi/pi-apps/gui");
+    }
+
     static void x11Ayarlari() {
         try {
             Intent i = new Intent(Intent.ACTION_MAIN);
@@ -274,7 +281,8 @@ public class X11Tus {
                 cip("Kes", false, false, new Eylem() { public void yap() { tusa("ctrl+x"); } }));
         bolum(kok, "SİSTEM",
                 cip("Ubuntu XFCE", s.equals("xfce"), true, new Eylem() { public void yap() { sistem("xfce"); } }),
-                cip("Raspberry Pi OS", s.equals("raspi"), true, new Eylem() { public void yap() { sistem("raspi"); } }));
+                cip("Raspberry Pi OS", s.equals("raspi"), true, new Eylem() { public void yap() { sistem("raspi"); } }),
+                cip("Pi-Apps", false, true, new Eylem() { public void yap() { piApps(); } }));
         bolum(kok, null,
                 cip("Köşe Ayarları", false, true, new Eylem() { public void yap() { masaustunde("command -v kose-ayarlar >/dev/null && kose-ayarlar"); } }),
                 cip("Tuşu gizle", false, true, new Eylem() { public void yap() { gizli = true; kaldirGorunum();

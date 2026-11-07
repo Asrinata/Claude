@@ -297,6 +297,9 @@ cp ~/.kose-dokunma "$TMPDIR/kose-dokunma" 2>/dev/null
         mod) case "$a" in fare|trackpad) m=1 ;; dokunmatik) m=3 ;; *) m=2 ;; esac
              echo "$a" > ~/.kose-dokunma; echo "$a" > "$TMPDIR/kose-dokunma"
              timeout 20 termux-x11-preference touchMode:$m >/dev/null 2>&1 ;;
+        piapps) R2=$(cat ~/.kose-raspi-ad 2>/dev/null || echo raspi)
+                proot-distro login "$R2" --user pi --shared-tmp -- env DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 \
+                  /home/pi/pi-apps/gui >/dev/null 2>&1 & ;;
         sistem) case "$a" in raspi|xfce) echo "$a" > ~/.kose-masaustu; echo "$a" > "$TMPDIR/kose-masaustu" ;; esac ;;
       esac
     done < "$F"
@@ -364,6 +367,10 @@ done
 mkdir -p /root/.config/lxpanel/LXDE/panels /root/.config/gtk-3.0
 [ -f /etc/xdg/lxpanel/LXDE/panels/panel ] && sed 's/edge=bottom/edge=top/' /etc/xdg/lxpanel/LXDE/panels/panel \
   > /root/.config/lxpanel/LXDE/panels/panel
+# Pi-Apps root ile çalışmıyor: şifresiz sudo'lu "pi" kullanıcısı
+id pi >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo pi
+echo 'pi ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/pi && chmod 440 /etc/sudoers.d/pi
+apt install -y --no-install-recommends git lxterminal libglib2.0-bin || true
 for t in PiXflat PiXnoir; do
   if [ -d /usr/share/themes/$t ]; then
     printf '[Settings]\ngtk-theme-name=%s\ngtk-icon-theme-name=PiXflat\n' $t > /root/.config/gtk-3.0/settings.ini; break
@@ -374,6 +381,16 @@ RI
   proot-distro login $R -- bash /root/ic-raspi.sh || return 1
   HEDEF=$R icine /root/ortak.sh < ~/.kose-ortak.sh
   proot-distro login $R -- bash /root/ortak.sh
+  # Pi-Apps: pi kullanıcısıyla kur. Android'i görünce "desteklenmiyor" deyip sonda hata kodu
+  # veriyor ama kurulum tamamlanmış oluyor; asıl kontrol gui dosyasının varlığı.
+  echo -e "\e[1;33m== Pi-Apps kuruluyor ==\e[0m"
+  proot-distro login $R --user pi -- bash -c 'cd ~ && wget -qO /tmp/piapps-kur https://raw.githubusercontent.com/Botspot/pi-apps/master/install && bash /tmp/piapps-kur' || true
+  if proot-distro login $R -- test -x /home/pi/pi-apps/gui; then
+    proot-distro login $R -- bash -c 'printf "[Desktop Entry]\nType=Application\nName=Pi-Apps\nComment=Raspberry Pi uygulama mağazası\nExec=kose-istek piapps\nIcon=/home/pi/pi-apps/icons/logo.png\nCategories=Utility;System;PackageManager;\n" > /usr/share/applications/pi-apps-kose.desktop; mkdir -p /root/Desktop; cp /usr/share/applications/pi-apps-kose.desktop /root/Desktop/; chmod +x /root/Desktop/pi-apps-kose.desktop'
+    echo -e "\e[1;32mPi-Apps hazır (Menü > Accessories / masaüstü simgesi).\e[0m"
+  else
+    echo -e "\e[1;31mPi-Apps kurulamadı, Raspberry Pi OS yine çalışır.\e[0m"
+  fi
   HEDEF=$R icine /root/masaustu.sh <<'RM'
 #!/bin/bash
 export DISPLAY=:0 PULSE_SERVER=tcp:127.0.0.1 XDG_RUNTIME_DIR=/tmp/runtime-root MOZ_USE_XINPUT2=1
