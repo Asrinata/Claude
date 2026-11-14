@@ -177,13 +177,20 @@ input,textarea,select{font:inherit;color:inherit}
 .np textarea{flex:1;resize:none;border:0;outline:none;background:var(--win);padding:16px 18px;font:14px/1.6 var(--f-mono);color:var(--fg);tab-size:4}
 
 /* terminal */
-.term{height:100%;background:#120f18;font:13px/1.55 var(--f-mono);padding:12px 14px;overflow-y:auto;cursor:text;color:#ddd6e8}
+.term{flex:1;min-height:0;background:#120f18;font:13px/1.55 var(--f-mono);padding:12px 14px;overflow-y:auto;cursor:text;color:#ddd6e8}
 .term .ln{white-space:pre-wrap;word-break:break-word}
 .term .err{color:var(--bad)}
 .term .dim{color:#8a8298}
 .term .acc{color:var(--accent)}
 .term .grn{color:var(--ok)}
 .term .row{display:flex;gap:8px}
+.keybar{display:none;gap:4px;padding:6px;background:#120f18;border-top:1px solid var(--line);overflow-x:auto;scrollbar-width:none;flex:none}
+.keybar button{flex:none;min-width:44px;height:38px;padding:0 12px;border-radius:8px;background:var(--win-2);font:500 14px var(--f-mono);touch-action:manipulation}
+.keybar button:active{background:var(--accent);color:var(--on-accent)}
+@media (pointer:coarse){.keybar{display:flex}}
+#os.kb #taskbar{display:none}
+#os.kb #layer,#os.kb #icons{bottom:0}
+#os.kb #start{display:none}
 .term .row input{flex:1;min-width:0;background:none;border:0;outline:none;font:inherit;color:inherit;padding:0;caret-color:var(--accent)}
 .term .ps{white-space:nowrap}
 .term .ps b{color:var(--ok);font-weight:600}
@@ -252,6 +259,13 @@ input,textarea,select{font:inherit;color:inherit}
 .snake .pad svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 @media (pointer:coarse){.snake .pad{display:grid}}
 
+/* ritim koşusu */
+.dash{height:100%;display:flex;flex-direction:column;background:#0d0914}
+.dash canvas{flex:1;min-height:0;width:100%;display:block;touch-action:none;cursor:pointer}
+.dash-hud{display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
+.dash-hud .sp{flex:1}
+.dash-hud .d-best{color:var(--muted)}
+
 /* sistem izleyici */
 .mon{height:100%;display:flex;flex-direction:column;overflow-y:auto}
 .mon .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:14px}
@@ -271,7 +285,7 @@ input,textarea,select{font:inherit;color:inherit}
 @media (max-width:640px){
   #icons{grid-auto-flow:row;grid-template-columns:repeat(4,1fr);grid-template-rows:none;grid-auto-rows:96px;grid-auto-columns:auto;right:0;padding-right:max(16px,env(safe-area-inset-right,0px))}
   .task .lbl{display:none}
-  .task{padding:0 10px}
+  .task{padding:0 10px;flex:none}
   .fm-side{display:none}
   #tray .d{display:none}
   .tbtns .b-max{display:none}
@@ -537,6 +551,7 @@ const G = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
   paint: '<path d="M14.5 4.5l5 5-8.5 8.5h-5v-5z"/><path d="M12 7l5 5"/>',
   calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/>',
+  dash: '<rect x="9" y="7" width="10" height="10" rx="1.5"/><path d="M12 10h4v4h-4zM3 9h4M4 12h3M3 15h4"/>',
   snake: '<path d="M5 18c2.5 0 3-3 6-3s3.5 3 6 3M11 15c0-3 1-6 5-6"/><circle cx="17" cy="8" r="1.6"/>',
   monitor: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
   viewer: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 16l5-5 4 4 2.5-2.5L20 17"/><circle cx="15.5" cy="9" r="1.2"/>'
@@ -616,7 +631,10 @@ function openApp(id, opts = {}) {
   return w;
 }
 function focus(w) {
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && !w.el.contains(ae) && ae.closest && ae.closest('.win')) ae.blur();
   if (WM.active === w && w.el.classList.contains('active')) return;
+  if (WM.active && WM.active.onBlur) WM.active.onBlur();
   WM.wins.forEach(x => { x.el.classList.remove('active'); x.task.classList.remove('active'); });
   w.el.style.zIndex = ++WM.z; w.el.classList.add('active'); w.task.classList.add('active');
   WM.active = w;
@@ -713,12 +731,13 @@ const APPS = {
   calc:     { name: 'Hesap Makinesi',  c: ['#6f8cff', '#4b5be0'], w: 320, h: 500, single: true, create: calcApp },
   paint:    { name: 'Çizim',           c: ['#ff7aa8', '#c04fd0'], w: 780, h: 540, create: paintApp },
   calendar: { name: 'Takvim',          c: ['#ff6b6b', '#d9435a'], w: 400, h: 520, single: true, create: calendarApp },
+  dash:     { name: 'Ritim Koşusu',    c: ['#ffb347', '#ff5e7e'], w: 820, h: 480, single: true, create: dashApp },
   snake:    { name: 'Yılan',           c: ['#54d68a', '#1f9e6a'], w: 440, h: 540, single: true, create: snakeApp },
   monitor:  { name: 'Sistem İzleyici', c: ['#3fc7c0', '#2a7fb8'], w: 560, h: 480, single: true, create: monitorApp },
   settings: { name: 'Ayarlar',         c: ['#9aa0b5', '#5c6178'], w: 640, h: 560, single: true, create: settingsApp },
   viewer:   { name: 'Görüntüleyici',   c: ['#4fd1a1', '#2a8c78'], w: 620, h: 480, hidden: true, create: viewerApp }
 };
-const ALIASES = { dosyalar: 'files', terminal: 'terminal', notlar: 'notes', 'not': 'notes', hesap: 'calc', cizim: 'paint', 'çizim': 'paint', takvim: 'calendar', yilan: 'snake', 'yılan': 'snake', izleyici: 'monitor', ayarlar: 'settings' };
+const ALIASES = { dosyalar: 'files', terminal: 'terminal', notlar: 'notes', 'not': 'notes', hesap: 'calc', cizim: 'paint', 'çizim': 'paint', takvim: 'calendar', yilan: 'snake', kosu: 'dash', 'koşu': 'dash', ritim: 'dash', 'yılan': 'snake', izleyici: 'monitor', ayarlar: 'settings' };
 
 /* Dosyalar */
 function filesApp(w, opts) {
@@ -858,7 +877,8 @@ function notesApp(w, opts) {
 /* Terminal */
 function terminalApp(w, opts) {
   let cwd = opts.cwd || '/', hist = store.get('hist', []), hi = hist.length;
-  w.body.innerHTML = `<div class="term"><div class="out"></div><div class="row"><span class="ps"></span><input aria-label="Komut" autocomplete="off" autocapitalize="off" spellcheck="false"></div></div>`;
+  w.body.innerHTML = `<div class="app"><div class="term"><div class="out"></div><form class="row" autocomplete="off"><span class="ps"></span><input aria-label="Komut" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send"></form></div>
+    <div class="keybar" aria-label="Ek tuşlar"><button data-k="Tab">Tab</button><button data-k="ArrowUp">↑</button><button data-k="ArrowDown">↓</button><button data-k="/">/</button><button data-k="-">-</button><button data-k="&gt;">&gt;</button><button data-k="..">..</button><button data-k="KeyL">Temizle</button></div></div>`;
   const term = $('.term', w.body), out = $('.out', w.body), inp = $('input', w.body), ps = $('.ps', w.body);
   const user = () => cfg.user.toLowerCase().replace(/[^a-z0-9çğıöşü]/g, '') || 'kullanici';
   const prompt = () => `<b>${esc(user())}@lale</b>:<i>${esc(cwd)}</i>$`;
@@ -877,7 +897,7 @@ function terminalApp(w, opts) {
   rm [-r] <yol>     sil
   mv <kaynak> <hedef>  taşı / yeniden adlandır
   echo <metin> [> dosya]  yaz (>> ekler)
-  ac <uygulama|dosya>  aç: dosyalar, notlar, hesap, cizim, takvim, yilan, izleyici, ayarlar
+  ac <uygulama|dosya>  aç: dosyalar, notlar, hesap, cizim, takvim, kosu, yilan, izleyici, ayarlar
   hesapla <ifade>   örn: hesapla (12+8)*3
   tarih · kimim · uname · neofetch · gecmis · temizle · cikis`,
     help: () => C.yardim(),
@@ -957,12 +977,24 @@ function terminalApp(w, opts) {
     if (cands.length === 1) { parts[parts.length - 1] = cands[0]; inp.value = parts.join(' '); }
     else if (cands.length > 1) print(cands.map(c => c.trim()).join('   '), 'dim');
   }
+  // Enter bir form gönderimi olarak işlenir: telefon klavyelerinde (Gboard, iOS) keydown'da "Enter" gelmeyebilir
+  $('.row', w.body).addEventListener('submit', e => { e.preventDefault(); run(inp.value); inp.value = ''; term.scrollTop = term.scrollHeight; });
+  $('.keybar', w.body).addEventListener('pointerdown', e => {
+    const b = e.target.closest('[data-k]'); if (!b) return;
+    e.preventDefault(); const k = b.dataset.k;
+    if (k === 'Tab') complete();
+    else if (k === 'ArrowUp' || k === 'ArrowDown') inp.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    else if (k === 'KeyL') out.innerHTML = '';
+    else inp.setRangeText(k, inp.selectionStart, inp.selectionEnd, 'end');
+    inp.focus(); term.scrollTop = term.scrollHeight;
+  });
   inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { run(inp.value); inp.value = ''; term.scrollTop = term.scrollHeight; }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); if (hi > 0) inp.value = hist[--hi]; }
+    if (e.isComposing) return;
+    if (e.key === 'ArrowUp') { e.preventDefault(); if (hi > 0) inp.value = hist[--hi]; }
     else if (e.key === 'ArrowDown') { e.preventDefault(); if (hi < hist.length - 1) inp.value = hist[++hi]; else { hi = hist.length; inp.value = ''; } }
     else if (e.key === 'Tab') { e.preventDefault(); complete(); }
-    else if (e.key === 'l' && e.ctrlKey) { e.preventDefault(); out.innerHTML = ''; }
+    else if (e.ctrlKey && e.code === 'KeyL') { e.preventDefault(); out.innerHTML = ''; }
+    else if (e.ctrlKey && e.code === 'KeyC' && inp.selectionStart === inp.selectionEnd && !getSelection().toString()) { e.preventDefault(); printHTML(`<span class="ps">${prompt()}</span> ${esc(inp.value)}^C`); inp.value = ''; }
     term.scrollTop = term.scrollHeight;
   });
   term.addEventListener('click', () => { if (!getSelection().toString()) inp.focus(); });
@@ -1021,6 +1053,8 @@ function calcApp(w) {
   K.addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) press(b.dataset.k); });
   w.onKey = ev => {
     const m = { '*': '×', '/': '÷', '-': '−', '+': '+', '.': ',', ',': ',', 'Enter': '=', '=': '=', 'Backspace': '⌫', 'Escape': 'C', 'Delete': 'C', '%': '%', '(': '(', ')': ')' };
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    m.x = m.X = '×'; m[':'] = '÷'; m.c = m.C = 'C';
     const k = /^[0-9]$/.test(ev.key) ? ev.key : m[ev.key];
     if (k) { ev.preventDefault(); press(k); const b = K.querySelector(`[data-k="${k}"]`); b && (b.style.filter = 'brightness(1.4)', setTimeout(() => b.style.filter = '', 100)); }
   };
@@ -1157,10 +1191,11 @@ function snakeApp(w) {
   }
   function turn(dx, dy) { if (state !== 'run') return; if (dx === -dir[0] && dy === -dir[1]) return; nextDir = [dx, dy]; }
   w.onKey = e => {
-    const k = e.key.toLowerCase();
-    const m = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0] };
-    if (m[k]) { e.preventDefault(); turn(...m[k]); }
-    if (k === ' ' || k === 'enter') { e.preventDefault(); toggle(); }
+    // e.code tuşun yerini verir: Türkçe F ve Q klavyede W A S D aynı yerde çalışır
+    const m = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
+    const d = m[e.code] || m[e.key];
+    if (d) { e.preventDefault(); turn(...d); }
+    if (e.code === 'Space' || e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (!e.repeat) toggle(); }
   };
   cv.addEventListener('click', () => { if (state !== 'run') toggle(); });
   $$('.pad button', w.body).forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); const [x, y] = b.dataset.d.split(',').map(Number); if (state !== 'run') toggle(); else turn(x, y); }));
@@ -1169,6 +1204,242 @@ function snakeApp(w) {
   cv.addEventListener('touchend', e => { if (!ts) return; const dx = e.changedTouches[0].clientX - ts[0], dy = e.changedTouches[0].clientY - ts[1]; if (Math.max(Math.abs(dx), Math.abs(dy)) > 24) Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy)); ts = null; });
   w.onClose.push(() => clearInterval(timer));
   reset(); draw();
+}
+
+/* Ritim Koşusu: kendiliğinden ilerleyen kare, zıpla, dikenlerden kaç */
+const DASH = { speed: 10.4, g: 110, jv: 22, pad: 31, orb: 21, dt: 1 / 240 };
+function dashLevel() {
+  const o = []; let x = 14;
+  const S = (n = 1, y = 0) => { for (let i = 0; i < n; i++) o.push({ t: 's', x: x + i, y }); x += n; };
+  const B = (w = 1, h = 1, y = 0) => { for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) o.push({ t: 'b', x: x + i, y: y + j }); x += w; };
+  const G = n => { x += n; };
+  const P = () => { o.push({ t: 'p', x, y: 0 }); x += 1; };
+  const A = (dx, t, y) => o.push({ t, x: x + dx, y });
+  // 1. ısınma
+  G(4); S(1); G(9); S(1); G(9); S(2); G(9); S(3); G(10);
+  // 2. bloklar
+  B(1, 1); G(6); B(3, 1); G(5); B(3, 2); G(7);
+  // 3. merdiven
+  B(2, 1); B(2, 2); B(2, 3); G(7); S(2); G(8);
+  // 4. üstünde diken olan uzun platform
+  A(3, 's', 1); B(7, 1); G(7);
+  // 5. zıplatma pedi ve yüksek duvar
+  G(2); P(); G(2); B(3, 4); G(8);
+  // 6. halka ile çift zıplama
+  A(3, 'o', 1.6); S(7); G(8);
+  // 7. ritim bölümü
+  S(1); G(5); S(1); G(5); S(2); G(6); B(2, 1); S(2); G(6); S(3); G(6);
+  // 8. alçak tavan geçidi: platform üstünden zıpla, yerdeki dikenleri aş
+  B(3, 1); G(3); B(3, 2); G(3); B(3, 1); G(7);
+  // 9. final
+  S(1); G(4); S(1); G(4); S(2); G(4); S(3); G(14);
+  o.sort((a, b) => a.x - b.x);
+  return { objs: o, end: x };
+}
+function dashNew() { return { x: 0, y: 0, vy: 0, ground: true, dead: false, won: false, used: new Set(), i: 0, rot: 0 }; }
+function dashStep(s, held, lv) {
+  const dt = DASH.dt, py = s.y;
+  s.x += DASH.speed * dt;
+  if (held && s.ground) { s.vy = DASH.jv; s.ground = false; s.jumped = true; }
+  s.vy -= DASH.g * dt; s.y += s.vy * dt;
+  let landed = false;
+  if (s.y <= 0) { s.y = 0; s.vy = 0; landed = true; }
+  const O = lv.objs;
+  while (s.i < O.length && O[s.i].x < s.x - 2) s.i++;
+  for (let k = s.i; k < O.length && O[k].x < s.x + 2; k++) {
+    const o = O[k];
+    if (o.t === 'b') {
+      const top = o.y + 1, hx = s.x + 1 > o.x + .02 && s.x < o.x + .98;
+      if (!hx) continue;
+      if (s.vy <= 0 && py >= top - .25 && s.y <= top) { s.y = top; s.vy = 0; landed = true; }
+      else if (s.y + 1 > o.y + .05 && s.y < top - .02) { s.dead = true; return; }
+    } else if (o.t === 's') {
+      if (s.x + .85 > o.x + .35 && s.x + .15 < o.x + .65 && s.y + .1 < o.y + .55 && s.y + .9 > o.y) { s.dead = true; return; }
+    } else if (o.t === 'p') {
+      if (!s.used.has(o) && s.x + 1 > o.x && s.x < o.x + 1 && s.y < o.y + .3) { s.used.add(o); s.vy = DASH.pad; s.y += .01; landed = false; s.ground = false; s.padHit = o; }
+    } else if (o.t === 'o') {
+      if (held && !s.ground && !s.used.has(o) && Math.hypot(s.x + .5 - (o.x + .5), s.y + .5 - (o.y + .5)) < 1.05) { s.used.add(o); s.vy = DASH.orb; s.orbHit = o; }
+    }
+  }
+  if (s.padHit && s.vy > 0) landed = false;
+  s.ground = landed;
+  if (!landed) s.rot += dt * Math.PI / .42;
+  else { const t = Math.round(s.rot / (Math.PI / 2)) * Math.PI / 2; s.rot += (t - s.rot) * .35; }
+  if (s.x >= lv.end) s.won = true;
+}
+window.__laleDash = { DASH, dashLevel, dashNew, dashStep };
+
+function dashApp(w) {
+  const lv = dashLevel();
+  w.body.innerHTML = `<div class="dash"><canvas aria-label="Ritim Koşusu oyun alanı"></canvas>
+    <div class="dash-hud"><span class="d-att">Deneme 1</span><span class="sp"></span><span class="d-best"></span>
+      <button class="btn sm d-mute" aria-pressed="false">Ses: açık</button><button class="btn sm d-pause">Duraklat</button></div></div>`;
+  const cv = $('canvas', w.body), g = cv.getContext('2d');
+  let s = dashNew(), state = 'ready', held = false, attempts = 1, best = store.get('dashBest', 0), acc = 0, last = 0, raf = 0, parts = [], deadAt = 0, cam = 0;
+  let muted = store.get('dashMute', false);
+  const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0587d';
+  const hud = () => { $('.d-att', w.body).textContent = `Deneme ${attempts}`; $('.d-best', w.body).textContent = `En iyi: %${best}`; $('.d-mute', w.body).textContent = muted ? 'Ses: kapalı' : 'Ses: açık'; $('.d-mute', w.body).setAttribute('aria-pressed', muted); $('.d-pause', w.body).textContent = state === 'pause' ? 'Devam' : 'Duraklat'; };
+
+  /* müzik: 128 BPM, Web Audio ile üretilir */
+  let ac = null, mTimer = 0, nextT = 0, stepN = 0;
+  const BASS = [45, 45, 57, 45, 41, 41, 53, 41, 48, 48, 60, 48, 43, 43, 55, 47];
+  const hz = n => 440 * Math.pow(2, (n - 69) / 12);
+  function tone(t, f, d, type, vol, f2) {
+    const o = ac.createOscillator(), gn = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + d);
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(gn).connect(ac.destination); o.start(t); o.stop(t + d + .02);
+  }
+  function noise(t, d, vol) {
+    const b = ac.createBuffer(1, ac.sampleRate * d, ac.sampleRate), a = b.getChannelData(0);
+    for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 2 - 1) * (1 - i / a.length);
+    const src = ac.createBufferSource(), f = ac.createBiquadFilter(), gn = ac.createGain();
+    f.type = 'highpass'; f.frequency.value = 7000; gn.gain.value = vol;
+    src.buffer = b; src.connect(f).connect(gn).connect(ac.destination); src.start(t);
+  }
+  function schedule() {
+    const sp = 60 / 128 / 2;
+    while (nextT < ac.currentTime + .12) {
+      const i = stepN % 16, bar = Math.floor(stepN / 16) % 4;
+      if (i % 2 === 0) tone(nextT, 150, .18, 'sine', .55, 45);
+      else noise(nextT, .05, .12);
+      tone(nextT, hz(BASS[(bar * 4 + Math.floor(i / 4)) % 16] + (i % 4 === 3 ? 12 : 0)), sp * .9, 'sawtooth', .06);
+      if (i % 4 === 2) tone(nextT, hz(BASS[(bar * 4) % 16] + 24 + [0, 3, 7, 10][(stepN >> 2) % 4]), sp * 1.6, 'square', .025);
+      nextT += sp; stepN++;
+    }
+  }
+  function musicStart() {
+    if (muted) return;
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { return; }
+    musicStop(); nextT = ac.currentTime + .05; stepN = 0; schedule(); mTimer = setInterval(schedule, 25);
+  }
+  function musicStop() { clearInterval(mTimer); mTimer = 0; }
+  function sfxDie() { if (ac && !muted) { tone(ac.currentTime, 220, .35, 'sawtooth', .12, 40); noise(ac.currentTime, .25, .2); } }
+
+  function restart() { s = dashNew(); parts = []; state = 'run'; acc = 0; cam = 0; hud(); musicStart(); }
+  function press(v) {
+    held = v;
+    if (!v) return;
+    if (state === 'ready' || state === 'won') { if (state === 'won') attempts = 1; restart(); }
+    else if (state === 'pause') { state = 'run'; hud(); musicStart(); }
+  }
+  function pause() { if (state === 'run') { state = 'pause'; musicStop(); } else if (state === 'pause') { state = 'run'; musicStart(); } hud(); }
+  const isJumpKey = e => e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.key === ' ' || e.key === 'Enter';
+  w.onKey = e => {
+    if (isJumpKey(e)) { e.preventDefault(); if (!e.repeat) press(true); }
+    else if (e.code === 'KeyP' || e.key === 'Escape') { e.preventDefault(); pause(); }
+    else if (e.code === 'KeyR') { e.preventDefault(); attempts++; restart(); }
+  };
+  w.onKeyUp = e => { if (isJumpKey(e)) held = false; };
+  w.onBlur = () => { held = false; if (state === 'run') pause(); };
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); press(true); });
+  const rel = () => { held = false; };
+  cv.addEventListener('pointerup', rel); cv.addEventListener('pointercancel', rel);
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  $('.d-pause', w.body).onclick = e => { e.currentTarget.blur(); pause(); };
+  $('.d-mute', w.body).onclick = e => { e.currentTarget.blur(); muted = !muted; store.set('dashMute', muted); if (muted) musicStop(); else if (state === 'run') musicStart(); hud(); };
+
+  function burst(x, y, n, col, sp = 6) { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, v = Math.random() * sp + 1; parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, col, sz: Math.random() * .25 + .1 }); } }
+  function frame(t) {
+    raf = requestAnimationFrame(frame);
+    const dtR = Math.min(.05, (t - (last || t)) / 1000); last = t;
+    if (state === 'run') {
+      acc += dtR;
+      while (acc >= DASH.dt && state === 'run') {
+        acc -= DASH.dt;
+        const wasGround = s.ground;
+        dashStep(s, held, lv);
+        if (s.padHit) { burst(s.padHit.x + .5, .2, 10, '#f7d26a', 4); s.padHit = null; }
+        if (s.orbHit) { burst(s.orbHit.x + .5, s.orbHit.y + .5, 12, '#f7d26a', 5); s.orbHit = null; }
+        if (s.ground && Math.random() < .25) parts.push({ x: s.x, y: s.y + .1, vx: -2 - Math.random() * 2, vy: Math.random() * 2, life: .6, col: accent(), sz: .12 });
+        if (!wasGround && s.ground) burst(s.x + .5, s.y, 4, accent(), 2);
+        if (s.dead) {
+          state = 'dead'; deadAt = t; musicStop(); sfxDie(); burst(s.x + .5, s.y + .5, 40, accent(), 9);
+          const pct = Math.min(100, Math.floor(s.x / lv.end * 100));
+          if (pct > best) { best = pct; store.set('dashBest', best); }
+        }
+        if (s.won) { state = 'won'; musicStop(); best = 100; store.set('dashBest', 100); burst(s.x, 3, 80, '#f7d26a', 10); toast(`Ritim Koşusu tamamlandı: ${attempts}. denemede`); }
+      }
+    } else if (state === 'dead' && t - deadAt > 750) { attempts++; restart(); }
+    for (const p of parts) { p.x += p.vx * dtR; p.y += p.vy * dtR; p.vy -= 12 * dtR; p.life -= dtR * 1.4; }
+    parts = parts.filter(p => p.life > 0);
+    draw();
+  }
+  function draw() {
+    const d = Math.min(devicePixelRatio || 1, 2), W = cv.clientWidth, H = cv.clientHeight;
+    if (!W || !H) return;
+    if (cv.width !== Math.round(W * d) || cv.height !== Math.round(H * d)) { cv.width = Math.round(W * d); cv.height = Math.round(H * d); }
+    g.setTransform(d, 0, 0, d, 0, 0);
+    const portrait = H > W, U = Math.max(18, Math.min(H / 9, W / (portrait ? 15 : 13))), groundY = H - U * (portrait ? 3 : 1.6);
+    const camX = s.x - W / U * (portrait ? .18 : .28);
+    const targetCam = Math.max(0, s.y - 3.2); cam += (targetCam - cam) * .08;
+    const prog = Math.min(1, s.x / lv.end), hue = 330 - prog * 140;
+    const bg = g.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, `hsl(${hue},55%,16%)`); bg.addColorStop(1, `hsl(${hue + 30},60%,8%)`);
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    // paralaks kareler
+    g.strokeStyle = `hsla(${hue},70%,70%,.08)`; g.lineWidth = 2;
+    const pz = U * 2.6, off = -(camX * U * .25) % pz;
+    for (let x = off - pz; x < W + pz; x += pz) for (let y = (cam * U * .25) % pz - pz; y < groundY; y += pz) g.strokeRect(x + 8, y + 8, pz - 16, pz - 16);
+    const sx = x => (x - camX) * U, sy = y => groundY - (y - cam) * U;
+    // zemin
+    const gy = sy(0);
+    g.fillStyle = `hsl(${hue + 20},45%,10%)`; g.fillRect(0, gy, W, H - gy);
+    g.fillStyle = `hsla(${hue},80%,75%,.9)`; g.fillRect(0, gy, W, 2);
+    g.strokeStyle = `hsla(${hue},60%,60%,.12)`; g.lineWidth = 1;
+    for (let x = Math.floor(camX); x < camX + W / U + 1; x++) { g.beginPath(); g.moveTo(sx(x), gy + 2); g.lineTo(sx(x), H); g.stroke(); }
+    // bitiş çizgisi
+    const ex = sx(lv.end);
+    if (ex < W + 40) { g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(ex, 0, 6, gy); g.fillStyle = 'rgba(255,255,255,.5)'; for (let y = 0; y < gy; y += 16) g.fillRect(ex, y, 6, 8); }
+    const a = accent();
+    for (const o of lv.objs) {
+      const x = sx(o.x); if (x < -U * 2) continue; if (x > W + U) break;
+      const y = sy(o.y);
+      if (o.t === 'b') {
+        g.fillStyle = `hsl(${hue + 10},35%,14%)`; g.fillRect(x, y - U, U, U);
+        g.strokeStyle = `hsla(${hue},80%,78%,.85)`; g.lineWidth = 2; g.strokeRect(x + 1, y - U + 1, U - 2, U - 2);
+        g.strokeStyle = `hsla(${hue},80%,78%,.18)`; g.strokeRect(x + U * .25, y - U * .75, U * .5, U * .5);
+      } else if (o.t === 's') {
+        g.fillStyle = `hsl(${hue + 10},35%,12%)`; g.strokeStyle = '#fff'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x + 2, y); g.lineTo(x + U / 2, y - U * .92); g.lineTo(x + U - 2, y); g.closePath(); g.fill(); g.stroke();
+      } else if (o.t === 'p') {
+        g.fillStyle = '#f7d26a'; g.beginPath(); g.ellipse(x + U / 2, y - U * .1, U * .42, U * .14, 0, Math.PI, 0); g.fill();
+        g.fillStyle = 'rgba(247,210,106,.25)'; g.fillRect(x + U * .15, y - U * .9, U * .7, U * .8);
+      } else if (o.t === 'o') {
+        const used = s.used.has(o), r = U * .38 * (1 + Math.sin(performance.now() / 120) * .05);
+        g.strokeStyle = used ? 'rgba(247,210,106,.3)' : '#f7d26a'; g.lineWidth = 3;
+        g.beginPath(); g.arc(x + U / 2, y - U / 2, r, 0, 7); g.stroke();
+        if (!used) { g.fillStyle = 'rgba(247,210,106,.35)'; g.beginPath(); g.arc(x + U / 2, y - U / 2, r * .6, 0, 7); g.fill(); }
+      }
+    }
+    for (const p of parts) { g.globalAlpha = Math.max(0, p.life); g.fillStyle = p.col; g.fillRect(sx(p.x) - p.sz * U / 2, sy(p.y) - p.sz * U / 2, p.sz * U, p.sz * U); }
+    g.globalAlpha = 1;
+    if (state !== 'dead') {
+      g.save(); g.translate(sx(s.x) + U / 2, sy(s.y) - U / 2); g.rotate(s.rot);
+      g.shadowColor = a; g.shadowBlur = 14;
+      g.fillStyle = a; g.fillRect(-U / 2, -U / 2, U, U); g.shadowBlur = 0;
+      g.fillStyle = 'rgba(255,255,255,.92)'; g.fillRect(-U * .3, -U * .3, U * .6, U * .6);
+      g.fillStyle = a; g.fillRect(-U * .18, -U * .18, U * .36, U * .36);
+      g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.strokeRect(-U / 2 + 1, -U / 2 + 1, U - 2, U - 2);
+      g.restore();
+    }
+    // ilerleme çubuğu
+    const bw = Math.min(360, W * .5), bx = (W - bw) / 2;
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(bx, 14, bw, 8);
+    g.fillStyle = a; g.fillRect(bx, 14, bw * prog, 8);
+    g.fillStyle = '#fff'; g.font = '600 13px Inter, sans-serif'; g.textAlign = 'left'; g.fillText(`%${Math.floor(prog * 100)}`, bx + bw + 10, 23);
+    if (state === 'ready' || state === 'pause' || state === 'won') {
+      g.fillStyle = 'rgba(10,6,18,.55)'; g.fillRect(0, 0, W, H);
+      g.textAlign = 'center'; g.fillStyle = '#fff';
+      g.font = `700 ${Math.min(44, W / 12)}px Sora, sans-serif`;
+      g.fillText(state === 'won' ? 'Tamamlandı!' : state === 'pause' ? 'Duraklatıldı' : 'Ritim Koşusu', W / 2, H / 2 - 18);
+      g.font = '15px Inter, sans-serif'; g.fillStyle = 'rgba(255,255,255,.8)';
+      g.fillText(state === 'won' ? `${attempts}. denemede bitirdin. Tekrar oynamak için zıpla.` : 'Zıplamak için Boşluk, Yukarı ok ya da tıkla / dokun. Basılı tutarsan art arda zıplar.', W / 2, H / 2 + 16);
+      g.fillText('Sarı halkanın içinden geçerken basarsan havada tekrar zıplarsın.  P: duraklat · R: baştan', W / 2, H / 2 + 40);
+    }
+  }
+  w.onClose.push(() => { cancelAnimationFrame(raf); musicStop(); try { ac && ac.close(); } catch (e) {} });
+  hud(); raf = requestAnimationFrame(frame);
 }
 
 /* Sistem İzleyici */
@@ -1242,7 +1513,7 @@ function settingsApp(w) {
 }
 
 /* ---------- masaüstü, başlat menüsü ---------- */
-const DESK = ['files', 'terminal', 'notes', 'calc', 'paint', 'calendar', 'snake', 'monitor', 'settings'];
+const DESK = ['files', 'terminal', 'notes', 'calc', 'paint', 'calendar', 'dash', 'snake', 'monitor', 'settings'];
 const icons = $('#icons');
 icons.innerHTML = DESK.map(id => `<button class="dicon" data-app="${id}" role="listitem">${ico(id, 48)}<span>${APPS[id].name}</span></button>`).join('');
 icons.addEventListener('click', e => {
@@ -1314,14 +1585,48 @@ $('#st-off').onclick = () => { closeStart(); [...WM.wins.values()].forEach(close
 $('#poweron').onclick = () => { $('#off').hidden = true; boot(); };
 
 /* ---------- klavye ---------- */
+/* Meta (Windows/Cmd) tuşu yalnızca tek başına basılıp bırakılınca menüyü açar; Cmd+C gibi kısayollar menüyü açmaz. */
+let metaAlone = false;
+const isTyping = t => !!(t && t.matches && t.matches('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
 addEventListener('keydown', e => {
-  if (!lock.classList.contains('hide')) { unlock(); e.preventDefault(); return; }
-  if (e.key === 'Escape') { closeMenu(); closeStart(); }
-  if (e.altKey && e.key.toLowerCase() === 'l') { e.preventDefault(); doLock(); return; }
-  if (e.key === 'Meta' || (e.ctrlKey && e.key === 'Escape')) { start.classList.contains('hide') ? openStart() : closeStart(); return; }
-  const t = e.target, typing = t.matches && t.matches('input, textarea, [contenteditable]');
-  if (!typing && WM.active && !WM.active.min && WM.active.onKey) WM.active.onKey(e);
+  if (e.isComposing || e.keyCode === 229) return;
+  if (!lock.classList.contains('hide')) { if (!['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph'].includes(e.key)) unlock(); e.preventDefault(); return; }
+  metaAlone = e.key === 'Meta' || e.key === 'OS';
+  if (e.key === 'Escape') { if (ctxEl || !start.classList.contains('hide')) { closeMenu(); closeStart(); return; } }
+  if (e.altKey && !e.ctrlKey && e.code === 'KeyL') { e.preventDefault(); doLock(); return; }
+  if (e.ctrlKey && e.key === 'Escape') { e.preventDefault(); start.classList.contains('hide') ? openStart() : closeStart(); return; }
+  if (e.altKey && !e.ctrlKey && e.code === 'KeyW' && WM.active) { e.preventDefault(); closeWin(WM.active); return; }
+  if (e.altKey && !e.ctrlKey && e.code === 'Backquote' && WM.wins.size) { e.preventDefault(); cycleWin(); return; }
+  if (!start.classList.contains('hide') || isTyping(e.target)) return;
+  const w = WM.active && !WM.active.min ? WM.active : null;
+  if (w && w.onKey) { w.onKey(e); return; }
+  if (!w && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && e.key !== ' ') { openStart(); search.value = e.key; renderStart(); search.focus(); e.preventDefault(); }
 });
+addEventListener('keyup', e => {
+  if ((e.key === 'Meta' || e.key === 'OS') && metaAlone) { metaAlone = false; start.classList.contains('hide') ? openStart() : closeStart(); return; }
+  if (isTyping(e.target)) return;
+  const w = WM.active && !WM.active.min ? WM.active : null;
+  w && w.onKeyUp && w.onKeyUp(e);
+});
+addEventListener('blur', () => { WM.wins.forEach(w => w.onBlur && w.onBlur()); });
+function cycleWin() {
+  const list = [...WM.wins.values()].sort((a, b) => +a.el.style.zIndex - +b.el.style.zIndex);
+  const w = list[0]; if (w.min) restore(w); focus(w);
+}
+
+/* Telefonda sanal klavye açılınca ekranı görünür alana sığdır; yazılan alan klavyenin altında kalmasın. */
+const os = $('#os'), vv = window.visualViewport;
+function fitViewport() {
+  if (!vv) return;
+  const kb = innerHeight - vv.height > 120;
+  os.classList.toggle('kb', kb);
+  os.style.height = kb ? vv.height + 'px' : '';
+  os.style.top = kb ? vv.offsetTop + 'px' : '';
+  os.style.bottom = kb ? 'auto' : '';
+  const a = document.activeElement;
+  if (kb && a && isTyping(a)) setTimeout(() => a.scrollIntoView({ block: 'nearest' }), 60);
+}
+if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); }
 
 addEventListener('resize', () => { drawWall(); if (isMobile()) WM.wins.forEach(w => w.el.classList.add('max')); });
 drawWall();
