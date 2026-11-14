@@ -1,0 +1,1334 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Lale OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Düzen: tam ekran masaüstü; altta cam görev çubuğu, üstünde sürüklenebilir pencereler */
+:root{
+  --win:#1d1a26; --win-2:#262231; --win-3:#302b3d;
+  --line:rgba(255,255,255,.09); --fg:#efeaf5; --muted:#a59db4;
+  --glass:rgba(24,20,34,.72); --accent:#f0587d; --on-accent:#fff;
+  --ok:#4fd1a1; --warn:#f2b84b; --bad:#ff6b6b;
+  --f-display:"Sora","Segoe UI",system-ui,sans-serif;
+  --f-ui:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --tb-h:56px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;overflow:hidden}
+body{background:#140f1e;color:var(--fg);font:14px/1.45 var(--f-ui);-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+
+#os{position:fixed;inset:0;overflow:hidden}
+#wall{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+/* masaüstü simgeleri */
+#icons{position:absolute;top:env(safe-area-inset-top,0px);left:0;bottom:var(--tb-h);padding:16px;padding-left:max(16px,env(safe-area-inset-left,0px));display:grid;grid-auto-flow:column;grid-template-rows:repeat(auto-fill,96px);grid-auto-columns:88px;gap:6px;align-content:start}
+.dicon{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;border-radius:10px;text-align:center;font-size:12px;line-height:1.25;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.dicon:hover{background:rgba(255,255,255,.1)}
+.dicon.sel{background:rgba(255,255,255,.18)}
+.ico{display:inline-grid;place-items:center;border-radius:28%;background:linear-gradient(145deg,var(--a),var(--b));box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 2px 8px rgba(0,0,0,.3);flex:none}
+.ico svg{width:58%;height:58%;fill:none;stroke:#fff;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+
+/* pencereler */
+#layer{position:absolute;top:env(safe-area-inset-top,0px);left:0;right:0;bottom:var(--tb-h);pointer-events:none}
+#layer>.win{pointer-events:auto}
+#layer>.win.min{pointer-events:none}
+.win{position:absolute;display:flex;flex-direction:column;background:var(--win);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.45),0 2px 6px rgba(0,0,0,.3);overflow:hidden;min-width:260px;min-height:160px;transition:opacity .16s,transform .16s}
+.win.opening{opacity:0;transform:scale(.96) translateY(8px)}
+.win.min{opacity:0;transform:scale(.9) translateY(40px);pointer-events:none}
+.win.max{left:0!important;top:0!important;width:100%!important;height:100%!important;border-radius:0;border:0}
+.win.closing{opacity:0;transform:scale(.96)}
+.tb{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;background:var(--win-2);border-bottom:1px solid var(--line);cursor:default;touch-action:none}
+.win:not(.active) .tb{background:var(--win)}
+.win:not(.active) .tt{color:var(--muted)}
+.tt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:13px}
+.tbtns{display:flex;gap:2px}
+.tbtns button{width:32px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--muted)}
+.tbtns button:hover{background:rgba(255,255,255,.08);color:var(--fg)}
+.tbtns .b-close:hover{background:var(--accent);color:var(--on-accent)}
+.tbtns svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round}
+.wb{flex:1;min-height:0;position:relative;overflow:hidden;user-select:text;-webkit-user-select:text}
+.rz{position:absolute;z-index:2;touch-action:none}
+.rz-r{top:0;right:-3px;width:8px;bottom:12px;cursor:ew-resize}
+.rz-b{left:0;bottom:-3px;height:8px;right:12px;cursor:ns-resize}
+.rz-br{right:-2px;bottom:-2px;width:16px;height:16px;cursor:nwse-resize}
+.win.max .rz{display:none}
+
+/* görev çubuğu */
+#taskbar{position:absolute;left:0;right:0;bottom:0;height:calc(var(--tb-h) + env(safe-area-inset-bottom,0px));padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));display:flex;align-items:center;gap:6px;background:var(--glass);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border-top:1px solid var(--line);z-index:100000}
+#startbtn{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--accent);flex:none}
+#startbtn:hover,#startbtn.on{background:rgba(255,255,255,.1)}
+#startbtn svg{width:26px;height:26px}
+#tasks{flex:1;min-width:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+#tasks::-webkit-scrollbar{display:none}
+.task{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px 0 8px;border-radius:10px;flex:0 1 190px;min-width:48px;overflow:hidden;position:relative;color:var(--muted)}
+.task:hover{background:rgba(255,255,255,.07)}
+.task.active{background:rgba(255,255,255,.12);color:var(--fg)}
+.task::after{content:"";position:absolute;left:50%;bottom:3px;width:6px;height:3px;border-radius:2px;background:var(--muted);transform:translateX(-50%);transition:width .15s}
+.task.active::after{width:18px;background:var(--accent)}
+.task .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+#tray{display:flex;flex-direction:column;align-items:flex-end;padding:0 10px;height:44px;justify-content:center;border-radius:10px;font-variant-numeric:tabular-nums;flex:none}
+#tray:hover{background:rgba(255,255,255,.07)}
+#tray .t{font-weight:600;font-size:13px}
+#tray .d{font-size:11px;color:var(--muted)}
+
+/* başlat menüsü */
+#start{position:absolute;left:max(8px,env(safe-area-inset-left,0px));bottom:calc(var(--tb-h) + env(safe-area-inset-bottom,0px) + 8px);width:min(460px,calc(100vw - 16px));max-height:calc(100% - var(--tb-h) - 24px);display:flex;flex-direction:column;background:var(--glass);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);z-index:100001;overflow:hidden;transform-origin:bottom left;transition:opacity .15s,transform .15s}
+#start.hide{opacity:0;transform:translateY(10px) scale(.98);pointer-events:none}
+.st-head{padding:18px 18px 10px}
+.st-head h2{margin:0 0 12px;font:600 18px var(--f-display);text-wrap:balance}
+#st-search{width:100%;height:40px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.25);padding:0 14px;outline:none}
+#st-search:focus{border-color:var(--accent)}
+.st-label{padding:6px 18px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#st-apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;padding:0 12px 12px;overflow-y:auto}
+.st-app{display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 4px;border-radius:12px;font-size:12px;text-align:center}
+.st-app:hover,.st-app.first{background:rgba(255,255,255,.09)}
+.st-empty{grid-column:1/-1;padding:20px;color:var(--muted);text-align:center}
+.st-foot{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 18px;border-top:1px solid var(--line);background:rgba(0,0,0,.18)}
+.avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);font-weight:700;font-family:var(--f-display);flex:none}
+.st-user{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-foot button{height:34px;padding:0 10px;border-radius:8px;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.st-foot button:hover{background:rgba(255,255,255,.08);color:var(--fg)}
+.st-foot svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* bağlam menüsü ve bildirim */
+.ctx{position:fixed;min-width:190px;padding:5px;background:var(--win-2);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:100002;font-size:13px}
+.ctx button{display:flex;width:100%;text-align:left;padding:8px 12px;border-radius:6px}
+.ctx button:hover{background:var(--accent);color:var(--on-accent)}
+.ctx button.danger{color:var(--bad)}
+.ctx button.danger:hover{background:var(--bad);color:#fff}
+.ctx hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+#toasts{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:calc(12px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:8px;z-index:100003;pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 14px;background:var(--win-2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.4);font-size:13px;max-width:320px;animation:tin .2s ease-out}
+.toast.err{border-left-color:var(--bad)}
+.toast button{color:var(--accent);font-weight:600}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}}
+
+/* kilit, açılış, kapanış */
+.overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px}
+#lock{z-index:200000;background:rgba(10,6,18,.35);backdrop-filter:blur(26px);-webkit-backdrop-filter:blur(26px);cursor:pointer;transition:opacity .35s,transform .35s}
+#lock.hide{opacity:0;transform:translateY(-30px);pointer-events:none}
+#lock .clock{font:700 clamp(64px,16vw,120px)/1 var(--f-display);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+#lock .date{font-size:18px;color:rgba(255,255,255,.85)}
+#lock .hint{margin-top:40px;font-size:13px;color:rgba(255,255,255,.6);letter-spacing:.04em}
+#boot{z-index:300000;background:#0d0914;transition:opacity .4s}
+#boot.hide{opacity:0;pointer-events:none}
+#boot svg{width:72px;height:72px;color:var(--accent)}
+#boot .name{font:600 26px var(--f-display);letter-spacing:.02em}
+#boot .ver{font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.bar{width:180px;height:4px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:18px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:2px}
+#off{z-index:300001;background:#000}
+#off p{color:#8c8499;margin:0}
+.btn{height:36px;padding:0 16px;border-radius:9px;background:var(--win-3);border:1px solid var(--line);font-weight:500;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:hover{background:#3a344a}
+.btn.pri{background:var(--accent);border-color:transparent;color:var(--on-accent)}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--bad)}
+.btn.sm{height:30px;padding:0 10px;font-size:12px}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ortak uygulama parçaları */
+.app{display:flex;flex-direction:column;height:100%}
+.toolbar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:var(--win)}
+.toolbar .sp{flex:1}
+.statusbar{padding:5px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.field{height:30px;border-radius:7px;border:1px solid var(--line);background:rgba(0,0,0,.25);padding:0 10px;outline:none;min-width:0}
+.field:focus{border-color:var(--accent)}
+
+/* dosyalar */
+.fm{display:flex;height:100%}
+.fm-side{width:160px;flex:none;padding:10px 8px;border-right:1px solid var(--line);background:rgba(0,0,0,.12);display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.fm-side .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:4px 10px 6px}
+.fm-side button{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;text-align:left;font-size:13px}
+.fm-side button:hover{background:rgba(255,255,255,.06)}
+.fm-side button.on{background:rgba(255,255,255,.1);color:var(--fg)}
+.fm-side svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.fm-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.crumbs{display:flex;align-items:center;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none;font-size:13px}
+.crumbs button{padding:4px 7px;border-radius:6px;white-space:nowrap}
+.crumbs button:hover{background:rgba(255,255,255,.08)}
+.crumbs span{color:var(--muted)}
+.iconbtn{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;flex:none}
+.iconbtn:hover{background:rgba(255,255,255,.08)}
+.iconbtn:disabled{opacity:.35;cursor:default;background:none}
+.iconbtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.fm-grid{flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));grid-auto-rows:max-content;gap:6px;outline:none}
+.fm-item{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:9px;font-size:12px;text-align:center;word-break:break-word;border:1px solid transparent}
+.fm-item:hover{background:rgba(255,255,255,.05)}
+.fm-item.sel{background:color-mix(in srgb,var(--accent) 22%,transparent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+.fm-item svg{width:44px;height:44px}
+.fm-item input{width:100%;font-size:12px;text-align:center;padding:2px 4px;border-radius:4px;border:1px solid var(--accent);background:var(--win);outline:none}
+.fm-empty{grid-column:1/-1;align-self:center;text-align:center;color:var(--muted);padding:40px 10px}
+
+/* not defteri */
+.np textarea{flex:1;resize:none;border:0;outline:none;background:var(--win);padding:16px 18px;font:14px/1.6 var(--f-mono);color:var(--fg);tab-size:4}
+
+/* terminal */
+.term{height:100%;background:#120f18;font:13px/1.55 var(--f-mono);padding:12px 14px;overflow-y:auto;cursor:text;color:#ddd6e8}
+.term .ln{white-space:pre-wrap;word-break:break-word}
+.term .err{color:var(--bad)}
+.term .dim{color:#8a8298}
+.term .acc{color:var(--accent)}
+.term .grn{color:var(--ok)}
+.term .row{display:flex;gap:8px}
+.term .row input{flex:1;min-width:0;background:none;border:0;outline:none;font:inherit;color:inherit;padding:0;caret-color:var(--accent)}
+.term .ps{white-space:nowrap}
+.term .ps b{color:var(--ok);font-weight:600}
+.term .ps i{color:var(--accent);font-style:normal}
+
+/* hesap makinesi */
+.calc{height:100%;display:flex;flex-direction:column;padding:12px;gap:10px;background:var(--win)}
+.calc .disp{background:rgba(0,0,0,.28);border-radius:12px;padding:12px 16px;text-align:right;min-height:96px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
+.calc .ex{font:400 15px var(--f-mono);color:var(--muted);min-height:22px;word-break:break-all}
+.calc .res{font:600 34px/1.2 var(--f-display);font-variant-numeric:tabular-nums;word-break:break-all}
+.calc .keys{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.calc .keys button{border-radius:10px;background:var(--win-2);font:500 18px var(--f-display);min-height:42px}
+.calc .keys button:hover{background:var(--win-3)}
+.calc .keys .op{color:var(--accent)}
+.calc .keys .fn{color:var(--muted)}
+.calc .keys .eq{grid-column:1/-1;background:var(--accent);color:var(--on-accent)}
+.calc .keys .eq:hover{filter:brightness(1.08);background:var(--accent)}
+
+/* ayarlar */
+.set{height:100%;overflow-y:auto;padding:20px max(16px,4%);display:flex;flex-direction:column;gap:22px}
+.set h3{margin:0 0 10px;font:600 15px var(--f-display)}
+.set .card{background:var(--win-2);border:1px solid var(--line);border-radius:12px;padding:14px}
+.walls{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.walls button{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);text-align:left}
+.walls canvas{width:100%;aspect-ratio:16/10;max-width:100%;border-radius:8px;border:2px solid transparent;display:block}
+.walls button.on canvas{border-color:var(--accent)}
+.walls button.on{color:var(--fg)}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatches button{width:34px;height:34px;border-radius:50%;border:3px solid transparent;box-shadow:0 0 0 1px var(--line)}
+.swatches button.on{border-color:var(--fg)}
+.set .rowf{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.set .about{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px}
+.set .about dt{color:var(--muted)}
+.set .about dd{margin:0;font-variant-numeric:tabular-nums}
+
+/* çizim */
+.paint .toolbar input[type=color]{width:32px;height:30px;padding:0;border:1px solid var(--line);border-radius:7px;background:none;cursor:pointer}
+.paint .sw{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 1px var(--line)}
+.paint .sw.on{box-shadow:0 0 0 2px var(--win),0 0 0 4px var(--fg)}
+.paint .stage{flex:1;min-height:0;position:relative;background:#fff;touch-action:none;cursor:crosshair}
+.paint canvas{position:absolute;inset:0;width:100%;height:100%}
+.tog.on{background:var(--accent);color:var(--on-accent);border-color:transparent}
+
+/* takvim */
+.cal{height:100%;display:flex;flex-direction:column;padding:16px;gap:12px;overflow-y:auto}
+.cal .head{display:flex;align-items:center;gap:8px}
+.cal .head h3{flex:1;margin:0;font:600 18px var(--f-display)}
+.cal .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-variant-numeric:tabular-nums}
+.cal .dn{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;padding:4px 0}
+.cal .d{aspect-ratio:1;max-width:100%;display:grid;place-items:center;border-radius:9px;position:relative;font-size:13px}
+.cal .d.o{color:#5d566b}
+.cal .d.we{color:var(--muted)}
+.cal .d.today{background:var(--accent);color:var(--on-accent);font-weight:700}
+.cal .d.hol::after{content:"";position:absolute;bottom:5px;width:5px;height:5px;border-radius:50%;background:var(--warn)}
+.cal .d.today.hol::after{background:#fff}
+.cal .hols{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.cal .hols div{display:flex;gap:10px;align-items:baseline}
+.cal .hols b{color:var(--warn);font-variant-numeric:tabular-nums;min-width:52px}
+
+/* yılan */
+.snake{height:100%;display:flex;flex-direction:column;background:#100d16}
+.snake .stage{flex:1;min-height:0;display:grid;place-items:center;padding:10px}
+.snake canvas{max-width:100%;max-height:100%;aspect-ratio:1;border-radius:10px;background:#17131f}
+.snake .pad{display:none;grid-template-columns:repeat(3,52px);gap:6px;justify-content:center;padding:0 0 12px}
+.snake .pad button{height:44px;border-radius:10px;background:var(--win-2)}
+.snake .pad svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@media (pointer:coarse){.snake .pad{display:grid}}
+
+/* sistem izleyici */
+.mon{height:100%;display:flex;flex-direction:column;overflow-y:auto}
+.mon .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;padding:14px}
+.mon .kpi{background:var(--win-2);border-radius:10px;padding:10px 12px}
+.mon .kpi span{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mon .kpi b{font:600 20px var(--f-display);font-variant-numeric:tabular-nums}
+.mon canvas{display:block;width:calc(100% - 28px);height:90px;margin:0 14px;border-radius:10px;background:var(--win-2)}
+.mon table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.mon .tw{padding:14px;overflow-x:auto}
+.mon th{text-align:left;font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line)}
+.mon td{padding:6px 8px;border-bottom:1px solid var(--line)}
+.mon td:first-child{display:flex;align-items:center;gap:8px}
+
+.viewer{height:100%;display:grid;place-items:center;background:repeating-conic-gradient(#2a2633 0 25%,#221f2a 0 50%) 0 0/20px 20px;padding:12px;overflow:auto}
+.viewer img{max-width:100%;max-height:100%;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+
+@media (max-width:640px){
+  #icons{grid-auto-flow:row;grid-template-columns:repeat(4,1fr);grid-template-rows:none;grid-auto-rows:96px;grid-auto-columns:auto;right:0;padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .task .lbl{display:none}
+  .task{padding:0 10px}
+  .fm-side{display:none}
+  #tray .d{display:none}
+  .tbtns .b-max{display:none}
+}
+</style>
+
+<div id="os">
+  <canvas id="wall"></canvas>
+  <div id="icons" role="list"></div>
+  <div id="layer"></div>
+
+  <div id="start" class="hide" role="dialog" aria-label="Başlat menüsü">
+    <div class="st-head">
+      <h2 id="st-greet">İyi günler</h2>
+      <input id="st-search" type="search" placeholder="Uygulama ara…" autocomplete="off" aria-label="Uygulama ara">
+    </div>
+    <div class="st-label">Uygulamalar</div>
+    <div id="st-apps"></div>
+    <div class="st-foot">
+      <span class="avatar" id="st-av">K</span>
+      <span class="st-user" id="st-user">Kullanıcı</span>
+      <button id="st-lock" title="Ekranı kilitle"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Kilitle</button>
+      <button id="st-restart" title="Yeniden başlat"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg>Yeniden</button>
+      <button id="st-off" title="Kapat"><svg viewBox="0 0 24 24"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>Kapat</button>
+    </div>
+  </div>
+
+  <div id="taskbar">
+    <button id="startbtn" aria-label="Başlat" title="Başlat"></button>
+    <div id="tasks"></div>
+    <button id="tray" title="Takvimi aç"><span class="t" id="tr-t">00:00</span><span class="d" id="tr-d"></span></button>
+  </div>
+
+  <div id="toasts"></div>
+
+  <div id="lock" class="overlay hide" role="button" aria-label="Kilidi aç">
+    <div class="clock" id="lk-t">00:00</div>
+    <div class="date" id="lk-d"></div>
+    <div class="hint">Kilidi açmak için tıklayın ya da bir tuşa basın</div>
+  </div>
+
+  <div id="off" class="overlay" hidden>
+    <p>Lale OS kapatıldı.</p>
+    <button class="btn pri" id="poweron">Yeniden aç</button>
+  </div>
+
+  <div id="boot" class="overlay">
+    <span id="boot-logo"></span>
+    <div class="name">Lale OS</div>
+    <div class="ver">Sürüm 1.0 · Tomurcuk</div>
+    <div class="bar"><i id="boot-bar"></i></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('laleos:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('laleos:' + k, JSON.stringify(v)); } catch (e) {} }
+};
+const isMobile = () => innerWidth <= 640;
+let lastPointer = 'mouse';
+addEventListener('pointerdown', e => { lastPointer = e.pointerType; }, true);
+
+const LOGO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5c-4.2 0-6.3-3.1-6.3-7.3l3.1 2.1L12 4l3.2 5.3 3.1-2.1c0 4.2-2.1 7.3-6.3 7.3z" fill="currentColor"/><path d="M12 14.5V21M12 19.2c-1.8-1.9-3.6-2.2-5-2.1M12 18.2c1.8-1.9 3.6-2.2 5-2.1" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>';
+$('#startbtn').innerHTML = LOGO;
+$('#boot-logo').innerHTML = LOGO;
+
+/* ---------- ayarlar ---------- */
+const ACCENTS = [
+  {n:'Lale', c:'#f0587d'}, {n:'Safran', c:'#f2a541'}, {n:'Turkuaz', c:'#2ec4b6'},
+  {n:'Süsen', c:'#8b7cf6'}, {n:'Nar', c:'#e5484d'}, {n:'Çam', c:'#4fbf6b'}
+];
+const cfg = Object.assign({ wall:'dusk', accent:'#f0587d', user:'Kullanıcı' }, store.get('cfg', {}));
+const saveCfg = () => store.set('cfg', cfg);
+function applyAccent() {
+  document.documentElement.style.setProperty('--accent', cfg.accent);
+  const dark = cfg.accent === '#f2a541' || cfg.accent === '#2ec4b6' || cfg.accent === '#4fbf6b';
+  document.documentElement.style.setProperty('--on-accent', dark ? '#1a1320' : '#fff');
+}
+applyAccent();
+
+/* ---------- duvar kâğıtları ---------- */
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const WALLS = {
+  dusk: { name: 'Alacakaranlık', draw(g, w, h) {
+    const sky = g.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#24163f'); sky.addColorStop(.45, '#5d2f63'); sky.addColorStop(.72, '#c96a6c'); sky.addColorStop(1, '#f2a76a');
+    g.fillStyle = sky; g.fillRect(0, 0, w, h);
+    const sx = w * .68, sy = h * .62, r = Math.min(w, h) * .09;
+    const glow = g.createRadialGradient(sx, sy, 0, sx, sy, r * 5);
+    glow.addColorStop(0, 'rgba(255,214,160,.55)'); glow.addColorStop(1, 'rgba(255,214,160,0)');
+    g.fillStyle = glow; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#ffd9a8'; g.beginPath(); g.arc(sx, sy, r, 0, 7); g.fill();
+    const layers = ['#7a3a66', '#5a2a57', '#3d1d45', '#24122f'];
+    layers.forEach((c, i) => {
+      g.fillStyle = c; g.beginPath(); g.moveTo(0, h);
+      const base = h * (.62 + i * .1), amp = h * (.05 - i * .006);
+      for (let x = 0; x <= w; x += 8) {
+        const y = base - Math.sin(x / w * (3 + i) + i * 1.7) * amp - Math.sin(x / w * (9 + i * 2) + i) * amp * .35;
+        g.lineTo(x, y);
+      }
+      g.lineTo(w, h); g.fill();
+    });
+  }},
+  sea: { name: 'Derin Deniz', draw(g, w, h) {
+    const bg = g.createLinearGradient(0, 0, w * .3, h);
+    bg.addColorStop(0, '#061a2e'); bg.addColorStop(.55, '#0b4a5c'); bg.addColorStop(1, '#1f8a86');
+    g.fillStyle = bg; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 9; i++) {
+      g.beginPath();
+      const base = h * (.3 + i * .08);
+      for (let x = 0; x <= w; x += 6) {
+        const y = base + Math.sin(x / w * 6 + i * .8) * h * .025 + Math.sin(x / w * 15 + i) * h * .008;
+        x ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.lineTo(w, h); g.lineTo(0, h); g.closePath();
+      g.fillStyle = `rgba(120,230,220,${.035 + i * .01})`; g.fill();
+    }
+    const r = rng(7);
+    for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(200,255,250,${r() * .25})`; g.beginPath(); g.arc(r() * w, r() * h * .7, r() * 2.2 + .4, 0, 7); g.fill(); }
+  }},
+  garden: { name: 'Lale Bahçesi', draw(g, w, h) {
+    const bg = g.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#2b1638'); bg.addColorStop(1, '#13261d');
+    g.fillStyle = bg; g.fillRect(0, 0, w, h);
+    const r = rng(42), cols = ['240,88,125', '242,165,65', '229,72,77', '139,124,246', '255,140,170'];
+    for (let i = 0; i < 26; i++) {
+      const x = r() * w, y = h * (.25 + r() * .8), rad = Math.min(w, h) * (.06 + r() * .16);
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      const c = cols[i % cols.length];
+      gr.addColorStop(0, `rgba(${c},.5)`); gr.addColorStop(1, `rgba(${c},0)`);
+      g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+    for (let i = 0; i < 40; i++) {
+      const x = r() * w, base = h, top = h * (.55 + r() * .3), s = Math.min(w, h) * (.012 + r() * .012);
+      g.strokeStyle = 'rgba(70,140,90,.55)'; g.lineWidth = s * .35; g.beginPath(); g.moveTo(x, base); g.quadraticCurveTo(x + s, (base + top) / 2, x, top); g.stroke();
+      g.fillStyle = `rgba(${cols[i % 3]},.85)`; g.beginPath();
+      g.moveTo(x - s, top - s * .2); g.lineTo(x - s * .5, top - s * 1.7); g.lineTo(x, top - s * .9); g.lineTo(x + s * .5, top - s * 1.7); g.lineTo(x + s, top - s * .2);
+      g.quadraticCurveTo(x, top + s * 1.2, x - s, top - s * .2); g.fill();
+    }
+  }},
+  night: { name: 'Yıldızlı Gece', draw(g, w, h) {
+    const bg = g.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, '#050816'); bg.addColorStop(1, '#1a1440');
+    g.fillStyle = bg; g.fillRect(0, 0, w, h);
+    const a = g.createLinearGradient(0, h * .2, w, h * .6);
+    a.addColorStop(0, 'rgba(46,196,182,0)'); a.addColorStop(.5, 'rgba(46,196,182,.22)'); a.addColorStop(1, 'rgba(139,124,246,0)');
+    g.fillStyle = a; g.beginPath(); g.moveTo(0, h * .45);
+    for (let x = 0; x <= w; x += 10) g.lineTo(x, h * .35 + Math.sin(x / w * 5) * h * .08);
+    for (let x = w; x >= 0; x -= 10) g.lineTo(x, h * .5 + Math.sin(x / w * 4 + 1) * h * .06);
+    g.fill();
+    const r = rng(99);
+    for (let i = 0; i < (w * h) / 2500; i++) { g.fillStyle = `rgba(255,255,255,${r() * .8 + .1})`; g.fillRect(r() * w, r() * h, r() < .93 ? 1 : 2, r() < .93 ? 1 : 2); }
+  }}
+};
+function drawWall() {
+  const c = $('#wall'), d = Math.min(devicePixelRatio || 1, 2);
+  c.width = innerWidth * d; c.height = innerHeight * d;
+  const g = c.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
+  (WALLS[cfg.wall] || WALLS.dusk).draw(g, innerWidth, innerHeight);
+}
+
+/* ---------- dosya sistemi ---------- */
+const D = (children = {}) => ({ type: 'dir', children });
+const F = (content = '') => ({ type: 'file', content });
+function defaultFS() {
+  return D({
+    'Belgeler': D({
+      'hoş-geldin.txt': F(`Lale OS'a hoş geldin!
+
+Bu, tarayıcının içinde çalışan küçük bir işletim sistemi.
+Yaptığın her şey bu tarayıcıda saklanır.
+
+İpuçları
+- Masaüstündeki simgelere çift tıklayarak uygulama aç.
+- Pencereyi başlığından sürükle, ekranın üstüne bırakınca tam ekran olur.
+- Başlığa çift tıklamak da pencereyi büyütür.
+- Masaüstüne sağ tıklayınca kısayollar çıkar.
+- Terminalde "yardim" yazarak komutları gör.
+- Not Defteri'nde Ctrl+S ile kaydet.
+`),
+      'alışveriş.txt': F('- Simit (4 adet)\n- Ayran\n- Beyaz peynir\n- Çay, 1 kg\n- Domates\n'),
+      'Projeler': D({ 'fikirler.txt': F('1. Yılan oyununda rekor kır\n2. Çizim uygulamasında manzara yap\n') })
+    }),
+    'Resimler': D({}),
+    'Müzik': D({ 'çalma-listesi.txt': F("Üsküdar'a Gider İken\nKâtibim\nDere Boyu Kavaklar\nSarı Gelin\n") }),
+    'sistem': D({ 'sürüm.txt': F('Lale OS 1.0 "Tomurcuk"\nÇekirdek: lale-web 1.0.0\nKabuk: lsh 1.0\n') })
+  });
+}
+let fs = store.get('fs', null) || defaultFS();
+const fsListeners = new Set();
+let fsTimer;
+function fsChanged() {
+  clearTimeout(fsTimer); fsTimer = setTimeout(() => store.set('fs', fs), 150);
+  fsListeners.forEach(f => f());
+}
+function resolve(p, cwd = '/') {
+  const parts = (p.startsWith('/') ? p : cwd + '/' + p).split('/'), out = [];
+  for (const x of parts) { if (!x || x === '.') continue; if (x === '..') out.pop(); else out.push(x); }
+  return '/' + out.join('/');
+}
+function getNode(p) {
+  let n = fs;
+  for (const part of p.split('/').filter(Boolean)) { if (n.type !== 'dir' || !n.children[part]) return null; n = n.children[part]; }
+  return n;
+}
+function split(p) { const i = p.lastIndexOf('/'); return [p.slice(0, i) || '/', p.slice(i + 1)]; }
+const join = (a, b) => a === '/' ? '/' + b : a + '/' + b;
+function vErr(m) { const e = new Error(m); e.vfs = true; return e; }
+function mk(p, node) {
+  const [dir, name] = split(p), par = getNode(dir);
+  if (!name) throw vErr('Geçersiz ad');
+  if (!par || par.type !== 'dir') throw vErr(`Klasör bulunamadı: ${dir}`);
+  if (par.children[name]) throw vErr(`Zaten var: ${name}`);
+  par.children[name] = node; fsChanged();
+}
+function writeFile(p, content, append) {
+  const n = getNode(p);
+  if (n && n.type === 'dir') throw vErr(`${p} bir klasör`);
+  if (n) n.content = append ? n.content + content : content;
+  else { const [dir, name] = split(p), par = getNode(dir); if (!par || par.type !== 'dir') throw vErr(`Klasör bulunamadı: ${dir}`); par.children[name] = F(content); }
+  fsChanged();
+}
+function removeNode(p) {
+  const [dir, name] = split(p), par = getNode(dir);
+  if (!par || !par.children[name]) throw vErr(`Bulunamadı: ${p}`);
+  const n = par.children[name]; delete par.children[name]; fsChanged(); return n;
+}
+function moveNode(a, b) {
+  if (b === a || b.startsWith(a + '/')) throw vErr('Bir klasör kendi içine taşınamaz');
+  const n = getNode(a); if (!n) throw vErr(`Bulunamadı: ${a}`);
+  const tgt = getNode(b); if (tgt && tgt.type === 'dir') b = join(b, split(a)[1]);
+  if (getNode(b)) throw vErr(`Zaten var: ${b}`);
+  const [dir] = split(b), par = getNode(dir); if (!par || par.type !== 'dir') throw vErr(`Klasör bulunamadı: ${dir}`);
+  removeNode(a); par.children[split(b)[1]] = n; fsChanged();
+}
+function uniqueName(dir, base, ext = '') {
+  const par = getNode(dir); let name = base + ext, i = 2;
+  while (par.children[name]) name = `${base} ${i++}${ext}`;
+  return name;
+}
+const isImg = (name, n) => /\.(png|jpe?g|gif|webp)$/i.test(name) && n && n.type === 'file' && n.content.startsWith('data:image');
+function sizeOf(n) { return n.type === 'file' ? new Blob([n.content]).size : Object.values(n.children).reduce((s, c) => s + sizeOf(c), 0); }
+function fmtSize(b) { return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(1).replace('.', ',') + ' KB' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
+function openFile(p) {
+  const n = getNode(p); if (!n) return toast('Dosya bulunamadı', true);
+  if (n.type === 'dir') return openApp('files', { path: p });
+  if (isImg(p, n)) return openApp('viewer', { path: p });
+  openApp('notes', { path: p });
+}
+
+/* ---------- simgeler ---------- */
+const G = {
+  files: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  notes: '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/>',
+  terminal: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 9.5l3 2.5-3 2.5M12.5 15h4"/>',
+  calc: '<rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 7.5h6M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+  paint: '<path d="M14.5 4.5l5 5-8.5 8.5h-5v-5z"/><path d="M12 7l5 5"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/>',
+  snake: '<path d="M5 18c2.5 0 3-3 6-3s3.5 3 6 3M11 15c0-3 1-6 5-6"/><circle cx="17" cy="8" r="1.6"/>',
+  monitor: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+  viewer: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 16l5-5 4 4 2.5-2.5L20 17"/><circle cx="15.5" cy="9" r="1.2"/>'
+};
+function ico(id, size = 40) {
+  const a = APPS[id];
+  return `<span class="ico" style="--a:${a.c[0]};--b:${a.c[1]};width:${size}px;height:${size}px" aria-hidden="true"><svg viewBox="0 0 24 24">${G[id]}</svg></span>`;
+}
+const SV = {
+  min: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>',
+  max: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>',
+  close: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  up: '<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  plusdir: '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 10.5v5M9.5 13h5"/></svg>',
+  plusfile: '<svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7zM12 11v6M9 14h6"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  save: '<svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/></svg>',
+  home: '<svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/></svg>',
+  doc: '<svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7zM14 3v4h4"/></svg>',
+  img: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 16l5-5 4 4 2.5-2.5L20 17"/></svg>',
+  music: '<svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="16" r="2"/></svg>',
+  cog: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
+  left: '<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>',
+  right: '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+  upc: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>'
+};
+function fileIcon(name, n) {
+  if (n.type === 'dir') return `<svg viewBox="0 0 48 48"><path d="M4 12a3 3 0 0 1 3-3h11l4 4h19a3 3 0 0 1 3 3v21a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="var(--accent)" opacity=".85"/><path d="M4 18h40v19a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" fill="var(--accent)"/></svg>`;
+  if (isImg(name, n)) return `<svg viewBox="0 0 48 48"><rect x="7" y="8" width="34" height="32" rx="4" fill="#3b3550"/><path d="M7 33l10-10 8 8 5-5 11 11v0a4 4 0 0 1-4 4H11a4 4 0 0 1-4-4z" fill="#4fd1a1"/><circle cx="31" cy="17" r="3" fill="#f2b84b"/></svg>`;
+  return `<svg viewBox="0 0 48 48"><path d="M12 5h17l9 9v29H12z" fill="#e9e4f0"/><path d="M29 5v9h9" fill="#c9c1d6"/><path d="M17 22h15M17 27h15M17 32h10" stroke="#8a8298" stroke-width="2" stroke-linecap="round"/></svg>`;
+}
+
+/* ---------- pencere yöneticisi ---------- */
+const WM = { z: 100, n: 0, wins: new Map(), active: null };
+const layer = $('#layer');
+function openApp(id, opts = {}) {
+  const app = APPS[id]; if (!app) return null;
+  closeStart();
+  if (app.single) for (const w of WM.wins.values()) if (w.app === id) { if (w.min) restore(w); focus(w); w.reopen && w.reopen(opts); return w; }
+  const wid = ++WM.n;
+  const el = document.createElement('div');
+  el.className = 'win opening';
+  el.setAttribute('role', 'dialog');
+  el.innerHTML = `<div class="tb">${ico(id, 20)}<span class="tt"></span><div class="tbtns">
+    <button class="b-min" title="Simge durumuna küçült" aria-label="Küçült">${SV.min}</button>
+    <button class="b-max" title="Ekranı kapla" aria-label="Büyüt">${SV.max}</button>
+    <button class="b-close" title="Kapat" aria-label="Kapat">${SV.close}</button></div></div>
+    <div class="wb"></div><div class="rz rz-r"></div><div class="rz rz-b"></div><div class="rz rz-br"></div>`;
+  const L = layer.getBoundingClientRect();
+  const W = Math.min(app.w, L.width - 16), H = Math.min(app.h, L.height - 16);
+  const off = ((WM.n - 1) % 7) * 26;
+  el.style.width = W + 'px'; el.style.height = H + 'px';
+  el.style.left = Math.max(8, Math.min(L.width - W - 8, (L.width - W) / 2 - 90 + off)) + 'px';
+  el.style.top = Math.max(8, Math.min(L.height - H - 8, (L.height - H) / 2 - 50 + off)) + 'px';
+  layer.appendChild(el);
+  const w = { id: wid, app: id, el, body: $('.wb', el), min: false, onClose: [], onKey: null };
+  w.setTitle = t => { w.title = t; $('.tt', el).textContent = t; w.task && ($('.lbl', w.task).textContent = t, w.task.title = t); };
+  WM.wins.set(wid, w);
+  const task = document.createElement('button');
+  task.className = 'task'; task.innerHTML = ico(id, 26) + '<span class="lbl"></span>';
+  task.addEventListener('click', () => { if (WM.active === w && !w.min) minimize(w); else { if (w.min) restore(w); focus(w); } });
+  task.addEventListener('contextmenu', e => { e.preventDefault(); menu(e.clientX, e.clientY - 90, [{ l: el.classList.contains('max') ? 'Önceki boyut' : 'Ekranı kapla', f: () => toggleMax(w) }, { l: 'Küçült', f: () => minimize(w) }, '-', { l: 'Kapat', f: () => closeWin(w), d: 1 }]); });
+  $('#tasks').appendChild(task); w.task = task;
+  w.setTitle(app.name);
+  el.addEventListener('pointerdown', () => focus(w), true);
+  $('.b-close', el).onclick = () => closeWin(w);
+  $('.b-min', el).onclick = () => minimize(w);
+  $('.b-max', el).onclick = () => toggleMax(w);
+  $('.tb', el).addEventListener('dblclick', e => { if (!e.target.closest('button')) toggleMax(w); });
+  dragify(w); resizify(w);
+  if (isMobile()) el.classList.add('max');
+  focus(w);
+  try { app.create(w, opts); } catch (err) { console.error(err); w.body.innerHTML = '<p style="padding:20px">Uygulama başlatılamadı.</p>'; }
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('opening')));
+  return w;
+}
+function focus(w) {
+  if (WM.active === w && w.el.classList.contains('active')) return;
+  WM.wins.forEach(x => { x.el.classList.remove('active'); x.task.classList.remove('active'); });
+  w.el.style.zIndex = ++WM.z; w.el.classList.add('active'); w.task.classList.add('active');
+  WM.active = w;
+}
+function focusTop() {
+  let top = null;
+  WM.wins.forEach(x => { if (!x.min && (!top || +x.el.style.zIndex > +top.el.style.zIndex)) top = x; });
+  WM.wins.forEach(x => { x.el.classList.remove('active'); x.task.classList.remove('active'); });
+  WM.active = null;
+  if (top) focus(top);
+}
+function minimize(w) { w.min = true; w.el.classList.add('min'); focusTop(); }
+function restore(w) { w.min = false; w.el.classList.remove('min'); }
+function toggleMax(w) { if (isMobile()) return; w.el.classList.toggle('max'); }
+function closeWin(w) {
+  w.onClose.forEach(f => { try { f(); } catch (e) {} });
+  w.el.classList.add('closing'); w.task.remove();
+  WM.wins.delete(w.id);
+  setTimeout(() => w.el.remove(), 160);
+  if (WM.active === w) focusTop();
+}
+function dragify(w) {
+  const tb = $('.tb', w.el);
+  tb.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || e.target.closest('button') || isMobile()) return;
+    const el = w.el, L = layer.getBoundingClientRect();
+    let r = el.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top, moved = false;
+    tb.setPointerCapture(e.pointerId);
+    const move = ev => {
+      if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 4) return;
+      if (!moved && el.classList.contains('max')) {
+        const ratio = dx / r.width; el.classList.remove('max');
+        r = el.getBoundingClientRect(); dx = r.width * ratio; dy = 20;
+      }
+      moved = true;
+      el.style.left = Math.max(-r.width + 80, Math.min(L.width - 80, ev.clientX - L.left - dx)) + 'px';
+      el.style.top = Math.max(0, Math.min(L.height - 40, ev.clientY - L.top - dy)) + 'px';
+    };
+    const up = ev => {
+      tb.removeEventListener('pointermove', move); tb.removeEventListener('pointerup', up); tb.removeEventListener('pointercancel', up);
+      if (moved && ev.clientY - L.top <= 2) el.classList.add('max');
+    };
+    tb.addEventListener('pointermove', move); tb.addEventListener('pointerup', up); tb.addEventListener('pointercancel', up);
+  });
+}
+function resizify(w) {
+  $$('.rz', w.el).forEach(h => h.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); focus(w);
+    const el = w.el, r = el.getBoundingClientRect(), sx = e.clientX, sy = e.clientY;
+    const dirR = !h.classList.contains('rz-b'), dirB = !h.classList.contains('rz-r');
+    h.setPointerCapture(e.pointerId);
+    const move = ev => {
+      if (dirR) el.style.width = Math.max(260, r.width + ev.clientX - sx) + 'px';
+      if (dirB) el.style.height = Math.max(160, r.height + ev.clientY - sy) + 'px';
+    };
+    const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
+  }));
+}
+function onResize(w, fn) { const ro = new ResizeObserver(() => fn()); ro.observe(w.body); w.onClose.push(() => ro.disconnect()); }
+
+/* ---------- menü & bildirim ---------- */
+let ctxEl = null;
+function menu(x, y, items) {
+  closeMenu();
+  ctxEl = document.createElement('div'); ctxEl.className = 'ctx'; ctxEl.setAttribute('role', 'menu');
+  items.forEach(it => {
+    if (it === '-') return ctxEl.appendChild(document.createElement('hr'));
+    const b = document.createElement('button'); b.textContent = it.l; b.setAttribute('role', 'menuitem');
+    if (it.d) b.className = 'danger';
+    b.onclick = () => { closeMenu(); it.f(); };
+    ctxEl.appendChild(b);
+  });
+  document.body.appendChild(ctxEl);
+  const r = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+  ctxEl.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+}
+function closeMenu() { ctxEl && ctxEl.remove(); ctxEl = null; }
+addEventListener('pointerdown', e => { if (ctxEl && !ctxEl.contains(e.target)) closeMenu(); });
+function toast(msg, err, action) {
+  const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : '');
+  const s = document.createElement('span'); s.textContent = msg; t.appendChild(s);
+  if (action) { const b = document.createElement('button'); b.textContent = action.l; b.onclick = () => { action.f(); t.remove(); }; t.appendChild(b); }
+  $('#toasts').appendChild(t);
+  setTimeout(() => t.remove(), action ? 6000 : 2800);
+}
+
+/* ---------- uygulamalar ---------- */
+const APPS = {
+  files:    { name: 'Dosyalar',        c: ['#f6a85b', '#e0655a'], w: 760, h: 480, create: filesApp },
+  terminal: { name: 'Terminal',        c: ['#3b3550', '#1b1724'], w: 680, h: 420, create: terminalApp },
+  notes:    { name: 'Not Defteri',     c: ['#f7d26a', '#e8a33c'], w: 620, h: 460, create: notesApp },
+  calc:     { name: 'Hesap Makinesi',  c: ['#6f8cff', '#4b5be0'], w: 320, h: 500, single: true, create: calcApp },
+  paint:    { name: 'Çizim',           c: ['#ff7aa8', '#c04fd0'], w: 780, h: 540, create: paintApp },
+  calendar: { name: 'Takvim',          c: ['#ff6b6b', '#d9435a'], w: 400, h: 520, single: true, create: calendarApp },
+  snake:    { name: 'Yılan',           c: ['#54d68a', '#1f9e6a'], w: 440, h: 540, single: true, create: snakeApp },
+  monitor:  { name: 'Sistem İzleyici', c: ['#3fc7c0', '#2a7fb8'], w: 560, h: 480, single: true, create: monitorApp },
+  settings: { name: 'Ayarlar',         c: ['#9aa0b5', '#5c6178'], w: 640, h: 560, single: true, create: settingsApp },
+  viewer:   { name: 'Görüntüleyici',   c: ['#4fd1a1', '#2a8c78'], w: 620, h: 480, hidden: true, create: viewerApp }
+};
+const ALIASES = { dosyalar: 'files', terminal: 'terminal', notlar: 'notes', 'not': 'notes', hesap: 'calc', cizim: 'paint', 'çizim': 'paint', takvim: 'calendar', yilan: 'snake', 'yılan': 'snake', izleyici: 'monitor', ayarlar: 'settings' };
+
+/* Dosyalar */
+function filesApp(w, opts) {
+  let cwd = opts.path && getNode(opts.path) ? opts.path : '/Belgeler', sel = null, hist = [];
+  const places = [['/', 'Kök', SV.home], ['/Belgeler', 'Belgeler', SV.doc], ['/Resimler', 'Resimler', SV.img], ['/Müzik', 'Müzik', SV.music], ['/sistem', 'sistem', SV.cog]];
+  w.body.innerHTML = `<div class="fm">
+    <nav class="fm-side"><div class="lbl">Yerler</div>${places.map(p => `<button data-p="${esc(p[0])}">${p[2]}${p[1]}</button>`).join('')}</nav>
+    <div class="fm-main">
+      <div class="toolbar">
+        <button class="iconbtn" data-a="up" title="Üst klasör" aria-label="Üst klasör">${SV.up}</button>
+        <div class="crumbs"></div><span class="sp"></span>
+        <button class="iconbtn" data-a="ren" title="Yeniden adlandır (F2)" aria-label="Yeniden adlandır">${SV.edit}</button>
+        <button class="iconbtn" data-a="del" title="Sil (Delete)" aria-label="Sil">${SV.trash}</button>
+        <button class="iconbtn" data-a="dir" title="Yeni klasör" aria-label="Yeni klasör">${SV.plusdir}</button>
+        <button class="iconbtn" data-a="file" title="Yeni dosya" aria-label="Yeni dosya">${SV.plusfile}</button>
+      </div>
+      <div class="fm-grid" tabindex="0"></div>
+      <div class="statusbar"></div>
+    </div></div>`;
+  const grid = $('.fm-grid', w.body), crumbs = $('.crumbs', w.body), status = $('.statusbar', w.body);
+  function render() {
+    let n = getNode(cwd); if (!n || n.type !== 'dir') { cwd = '/'; n = fs; }
+    if (sel && !n.children[sel]) sel = null;
+    const ents = Object.entries(n.children).sort((a, b) => (a[1].type === b[1].type ? a[0].localeCompare(b[0], 'tr') : a[1].type === 'dir' ? -1 : 1));
+    grid.innerHTML = ents.length ? ents.map(([nm, c]) => `<button class="fm-item${sel === nm ? ' sel' : ''}" data-name="${esc(nm)}">${fileIcon(nm, c)}<span class="nm">${esc(nm)}</span></button>`).join('')
+      : '<div class="fm-empty">Bu klasör boş.<br>Sağ tıklayarak ya da üstteki düğmelerle yeni öğe ekleyin.</div>';
+    const parts = cwd.split('/').filter(Boolean);
+    crumbs.innerHTML = `<button data-c="/">Kök</button>` + parts.map((p, i) => `<span>›</span><button data-c="${esc('/' + parts.slice(0, i + 1).join('/'))}">${esc(p)}</button>`).join('');
+    $$('.fm-side button', w.body).forEach(b => b.classList.toggle('on', b.dataset.p === cwd));
+    $('[data-a=up]', w.body).disabled = cwd === '/';
+    $('[data-a=ren]', w.body).disabled = $('[data-a=del]', w.body).disabled = !sel;
+    updStatus(n, ents.length);
+    w.setTitle(cwd === '/' ? 'Dosyalar' : `${parts[parts.length - 1]} · Dosyalar`);
+  }
+  function updStatus(n, count) {
+    n = n || getNode(cwd);
+    count = count ?? Object.keys(n.children).length;
+    const s = sel && n.children[sel];
+    status.textContent = `${count} öğe` + (s ? `  ·  ${sel} seçili, ${s.type === 'dir' ? Object.keys(s.children).length + ' öğe' : fmtSize(sizeOf(s))}` : '');
+  }
+  function select(name) {
+    sel = name;
+    $$('.fm-item', grid).forEach(b => b.classList.toggle('sel', b.dataset.name === name));
+    $('[data-a=ren]', w.body).disabled = $('[data-a=del]', w.body).disabled = !sel;
+    updStatus();
+  }
+  function go(p) { cwd = p; sel = null; render(); }
+  function open(name) { const p = join(cwd, name), n = getNode(p); if (!n) return; if (n.type === 'dir') go(p); else openFile(p); }
+  function del(name) {
+    if (!name) return;
+    const p = join(cwd, name);
+    try { const node = removeNode(p); toast(`"${name}" silindi`, false, { l: 'Geri al', f: () => { try { mk(p, node); } catch (e) { toast(e.message, true); } } }); }
+    catch (e) { toast(e.message, true); }
+  }
+  function rename(name) {
+    const b = grid.querySelector(`[data-name="${CSS.escape(name)}"]`); if (!b) return;
+    const span = $('.nm', b), inp = document.createElement('input');
+    inp.value = name; span.replaceWith(inp); inp.focus();
+    const dot = name.lastIndexOf('.'); inp.setSelectionRange(0, dot > 0 ? dot : name.length);
+    let done = false;
+    const fin = ok => {
+      if (done) return; done = true;
+      const v = inp.value.trim();
+      if (ok && v && v !== name) {
+        if (v.includes('/')) { toast('Ad "/" içeremez', true); return render(); }
+        try { moveNode(join(cwd, name), join(cwd, v)); sel = v; } catch (e) { toast(e.message, true); }
+      }
+      render(); grid.focus();
+    };
+    inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') fin(true); if (e.key === 'Escape') fin(false); });
+    inp.addEventListener('blur', () => fin(true));
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('dblclick', e => e.stopPropagation());
+  }
+  function create(type) {
+    const name = type === 'dir' ? uniqueName(cwd, 'Yeni klasör') : uniqueName(cwd, 'yeni-not', '.txt');
+    try { mk(join(cwd, name), type === 'dir' ? D() : F('')); sel = name; render(); rename(name); } catch (e) { toast(e.message, true); }
+  }
+  w.body.addEventListener('click', e => {
+    const a = e.target.closest('[data-a]'), c = e.target.closest('[data-c]'), p = e.target.closest('[data-p]'), it = e.target.closest('.fm-item');
+    if (a) { const k = a.dataset.a; if (k === 'up') go(split(cwd)[0]); if (k === 'dir' || k === 'file') create(k); if (k === 'del') del(sel); if (k === 'ren' && sel) rename(sel); }
+    else if (c) go(c.dataset.c);
+    else if (p) go(p.dataset.p);
+    else if (it) { if (lastPointer === 'touch' && sel === it.dataset.name) open(it.dataset.name); else select(it.dataset.name); }
+    else if (e.target === grid) select(null);
+  });
+  grid.addEventListener('dblclick', e => { const it = e.target.closest('.fm-item'); if (it && lastPointer !== 'touch') open(it.dataset.name); });
+  grid.addEventListener('contextmenu', e => {
+    e.preventDefault(); e.stopPropagation();
+    const it = e.target.closest('.fm-item');
+    if (it) { const nm = it.dataset.name; select(nm); menu(e.clientX, e.clientY, [{ l: 'Aç', f: () => open(nm) }, { l: 'Yeniden adlandır', f: () => rename(nm) }, '-', { l: 'Sil', f: () => del(nm), d: 1 }]); }
+    else menu(e.clientX, e.clientY, [{ l: 'Yeni klasör', f: () => create('dir') }, { l: 'Yeni metin dosyası', f: () => create('file') }, '-', { l: 'Burada terminal aç', f: () => openApp('terminal', { cwd }) }]);
+  });
+  grid.addEventListener('keydown', e => {
+    if (e.key === 'Delete' && sel) del(sel);
+    else if (e.key === 'F2' && sel) rename(sel);
+    else if (e.key === 'Enter' && sel) open(sel);
+    else if (e.key === 'Backspace' && cwd !== '/') go(split(cwd)[0]);
+  });
+  const l = () => render(); fsListeners.add(l); w.onClose.push(() => fsListeners.delete(l));
+  w.reopen = o => o.path && go(o.path);
+  render();
+}
+
+/* Not Defteri */
+function notesApp(w, opts) {
+  let path = opts.path || null, dirty = false;
+  w.body.innerHTML = `<div class="app np">
+    <div class="toolbar">
+      <input class="field fname" aria-label="Dosya yolu" style="flex:1;min-width:120px">
+      <button class="btn sm pri b-save">${SV.save}Kaydet</button>
+    </div>
+    <textarea spellcheck="false" aria-label="Metin"></textarea>
+    <div class="statusbar"></div></div>`;
+  const ta = $('textarea', w.body), fn = $('.fname', w.body), st = $('.statusbar', w.body);
+  const n = path && getNode(path);
+  if (n && n.type === 'file') ta.value = n.content;
+  fn.value = path || join('/Belgeler', uniqueName('/Belgeler', 'adsız', '.txt'));
+  const title = () => w.setTitle(`${dirty ? '• ' : ''}${split(fn.value)[1] || 'adsız'} · Not Defteri`);
+  const stat = () => { const v = ta.value, before = v.slice(0, ta.selectionStart).split('\n'); st.textContent = `Satır ${before.length}, Sütun ${before[before.length - 1].length + 1}  ·  ${v.length} karakter  ·  UTF-8`; };
+  function save() {
+    const p = resolve(fn.value.trim() || '/Belgeler/adsız.txt');
+    try { writeFile(p, ta.value); path = p; fn.value = p; dirty = false; title(); toast(`Kaydedildi: ${p}`); } catch (e) { toast(e.message, true); }
+  }
+  ta.addEventListener('input', () => { dirty = true; title(); stat(); });
+  ta.addEventListener('keyup', stat); ta.addEventListener('click', stat);
+  ta.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
+    if (e.key === 'Tab') { e.preventDefault(); const s = ta.selectionStart; ta.setRangeText('\t', s, ta.selectionEnd, 'end'); dirty = true; title(); }
+  });
+  fn.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+  fn.addEventListener('input', title);
+  $('.b-save', w.body).onclick = save;
+  title(); stat(); setTimeout(() => ta.focus(), 50);
+}
+
+/* Terminal */
+function terminalApp(w, opts) {
+  let cwd = opts.cwd || '/', hist = store.get('hist', []), hi = hist.length;
+  w.body.innerHTML = `<div class="term"><div class="out"></div><div class="row"><span class="ps"></span><input aria-label="Komut" autocomplete="off" autocapitalize="off" spellcheck="false"></div></div>`;
+  const term = $('.term', w.body), out = $('.out', w.body), inp = $('input', w.body), ps = $('.ps', w.body);
+  const user = () => cfg.user.toLowerCase().replace(/[^a-z0-9çğıöşü]/g, '') || 'kullanici';
+  const prompt = () => `<b>${esc(user())}@lale</b>:<i>${esc(cwd)}</i>$`;
+  const upd = () => { ps.innerHTML = prompt(); };
+  function print(t, cls) { const d = document.createElement('div'); d.className = 'ln' + (cls ? ' ' + cls : ''); d.textContent = t; out.appendChild(d); }
+  function printHTML(h) { const d = document.createElement('div'); d.className = 'ln'; d.innerHTML = h; out.appendChild(d); }
+  const need = (a, m) => { if (!a) throw vErr(m); return a; };
+  const C = {
+    yardim: () => `Komutlar
+  ls [yol]          klasör içeriğini listele
+  cd [yol]          klasör değiştir
+  pwd               bulunduğun klasör
+  cat <dosya>       dosyayı göster
+  mkdir <ad>        klasör oluştur
+  touch <dosya>     boş dosya oluştur
+  rm [-r] <yol>     sil
+  mv <kaynak> <hedef>  taşı / yeniden adlandır
+  echo <metin> [> dosya]  yaz (>> ekler)
+  ac <uygulama|dosya>  aç: dosyalar, notlar, hesap, cizim, takvim, yilan, izleyici, ayarlar
+  hesapla <ifade>   örn: hesapla (12+8)*3
+  tarih · kimim · uname · neofetch · gecmis · temizle · cikis`,
+    help: () => C.yardim(),
+    ls: a => {
+      const flags = a.filter(x => x.startsWith('-')), args = a.filter(x => !x.startsWith('-'));
+      const p = resolve(args[0] || '.', cwd), n = getNode(p);
+      if (!n) throw vErr(`ls: erişilemiyor: ${args[0]}`);
+      if (n.type === 'file') return split(p)[1];
+      const e = Object.entries(n.children).sort((x, y) => x[0].localeCompare(y[0], 'tr'));
+      if (!e.length) return '';
+      if (flags.some(f => f.includes('l'))) { printHTML(e.map(([k, v]) => `${v.type === 'dir' ? 'd' : '-'}  ${String(v.type === 'dir' ? Object.keys(v.children).length : sizeOf(v)).padStart(7)}  ${v.type === 'dir' ? `<span class="acc">${esc(k)}/</span>` : esc(k)}`).join('\n')); return; }
+      printHTML(e.map(([k, v]) => v.type === 'dir' ? `<span class="acc">${esc(k)}/</span>` : esc(k)).join('   '));
+    },
+    cd: a => { const p = resolve(a[0] || '/', cwd), n = getNode(p); if (!n || n.type !== 'dir') throw vErr(`cd: böyle bir klasör yok: ${a[0]}`); cwd = p; upd(); },
+    pwd: () => cwd,
+    cat: a => { need(a[0], 'cat: dosya adı gerekli'); return a.map(x => { const n = getNode(resolve(x, cwd)); if (!n) throw vErr(`cat: ${x}: böyle bir dosya yok`); if (n.type === 'dir') throw vErr(`cat: ${x}: bir klasör`); return isImg(x, n) ? `[görüntü, ${fmtSize(sizeOf(n))}] — açmak için: ac ${x}` : n.content.replace(/\n$/, ''); }).join('\n'); },
+    mkdir: a => { need(a[0], 'mkdir: ad gerekli'); a.filter(x => !x.startsWith('-')).forEach(x => mk(resolve(x, cwd), D())); },
+    touch: a => { need(a[0], 'touch: dosya adı gerekli'); a.forEach(x => { const p = resolve(x, cwd); if (!getNode(p)) mk(p, F('')); }); },
+    rm: a => {
+      const r = a.some(x => /^-.*r/.test(x)), args = a.filter(x => !x.startsWith('-'));
+      need(args[0], 'rm: yol gerekli');
+      args.forEach(x => { const p = resolve(x, cwd), n = getNode(p); if (!n) throw vErr(`rm: ${x}: böyle bir dosya yok`); if (p === '/') throw vErr('rm: kök klasör silinemez'); if (n.type === 'dir' && !r) throw vErr(`rm: ${x}: bir klasör (rm -r kullanın)`); removeNode(p); if (cwd === p || cwd.startsWith(p + '/')) { cwd = split(p)[0]; upd(); } });
+    },
+    mv: a => { if (a.length < 2) throw vErr('mv: kaynak ve hedef gerekli'); moveNode(resolve(a[0], cwd), resolve(a[1], cwd)); },
+    echo: a => a.join(' '),
+    ac: a => {
+      need(a[0], 'ac: uygulama ya da dosya adı gerekli');
+      const id = ALIASES[a[0].toLowerCase()];
+      if (id) { openApp(id); return `${APPS[id].name} açılıyor…`; }
+      const p = resolve(a[0], cwd); if (!getNode(p)) throw vErr(`ac: bulunamadı: ${a[0]}`);
+      openFile(p);
+    },
+    hesapla: a => { try { return fmtNum(calcEval(a.join(''))); } catch (e) { throw vErr('hesapla: geçersiz ifade'); } },
+    tarih: () => new Date().toLocaleString('tr-TR', { dateStyle: 'full', timeStyle: 'medium' }),
+    kimim: () => user(),
+    uname: a => a.includes('-a') ? 'LaleOS lale 1.0.0-tomurcuk lale-web ' + navigator.platform : 'LaleOS',
+    gecmis: () => hist.map((h, i) => String(i + 1).padStart(4) + '  ' + h).join('\n'),
+    temizle: () => { out.innerHTML = ''; },
+    clear: () => { out.innerHTML = ''; },
+    cikis: () => { closeWin(w); },
+    exit: () => { closeWin(w); },
+    neofetch: () => {
+      const up = Math.floor((Date.now() - bootAt) / 1000);
+      const art = ['    _  /\\  _   ', '   ( \\/  \\/ )  ', '    \\      /   ', '     \'.__.\'    ', '       ||      ', '   \\   ||   /  ', '    \'._||_.\'   ', '       ||      '];
+      const info = [`<b class="grn">${esc(user())}@lale</b>`, '-----------', `<span class="acc">OS</span>: Lale OS 1.0 Tomurcuk`, `<span class="acc">Çekirdek</span>: lale-web 1.0.0`, `<span class="acc">Çalışma</span>: ${Math.floor(up / 60)} dk ${up % 60} sn`, `<span class="acc">Kabuk</span>: lsh 1.0`, `<span class="acc">Ekran</span>: ${innerWidth}×${innerHeight}`, `<span class="acc">Pencere</span>: ${WM.wins.size} açık`, `<span class="acc">Disk</span>: ${fmtSize(sizeOf(fs))}`];
+      printHTML(art.map((l, i) => `<span class="acc">${esc(l)}</span>  ${info[i] || ''}`).concat(info.slice(art.length).map(x => ' '.repeat(17) + x)).join('\n'));
+    }
+  };
+  const ALIAS = { dir: 'ls', cls: 'temizle', open: 'ac', date: 'tarih', whoami: 'kimim', history: 'gecmis', calc: 'hesapla' };
+  function tokenize(s) { const t = []; s.replace(/"([^"]*)"|'([^']*)'|(\S+)/g, (m, a, b, c) => { t.push(a ?? b ?? c); }); return t; }
+  function run(line) {
+    printHTML(`<span class="ps">${prompt()}</span> ${esc(line)}`);
+    line = line.trim(); if (!line) return;
+    hist.push(line); if (hist.length > 100) hist = hist.slice(-100); store.set('hist', hist); hi = hist.length;
+    let tokens = tokenize(line), redir = null;
+    const ri = tokens.findIndex(t => t === '>' || t === '>>');
+    if (ri >= 0) { redir = { app: tokens[ri] === '>>', file: tokens[ri + 1] }; tokens = tokens.slice(0, ri); }
+    let [cmd, ...args] = tokens; cmd = (cmd || '').toLowerCase(); cmd = ALIAS[cmd] || cmd;
+    const fnc = C[cmd];
+    if (!fnc) return print(`${cmd}: komut bulunamadı. "yardim" yazın.`, 'err');
+    try {
+      const r = fnc(args);
+      if (redir) { if (!redir.file) throw vErr('Yönlendirme için dosya adı gerekli'); writeFile(resolve(redir.file, cwd), (r ?? '') + '\n', redir.app); }
+      else if (r != null && r !== '') print(r);
+    } catch (e) { print(e.vfs ? e.message : 'Hata: ' + e.message, 'err'); }
+  }
+  function complete() {
+    const v = inp.value, parts = v.split(' '), last = parts[parts.length - 1];
+    let cands;
+    if (parts.length === 1) cands = Object.keys(C).filter(k => k.startsWith(last)).map(k => k + ' ');
+    else {
+      const slash = last.lastIndexOf('/'), dirPart = slash >= 0 ? last.slice(0, slash + 1) : '', base = last.slice(slash + 1);
+      const n = getNode(resolve(dirPart || '.', cwd));
+      if (!n || n.type !== 'dir') return;
+      cands = Object.entries(n.children).filter(([k]) => k.startsWith(base)).map(([k, c]) => dirPart + (k.includes(' ') ? k : k) + (c.type === 'dir' ? '/' : ' '));
+    }
+    if (cands.length === 1) { parts[parts.length - 1] = cands[0]; inp.value = parts.join(' '); }
+    else if (cands.length > 1) print(cands.map(c => c.trim()).join('   '), 'dim');
+  }
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { run(inp.value); inp.value = ''; term.scrollTop = term.scrollHeight; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (hi > 0) inp.value = hist[--hi]; }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); if (hi < hist.length - 1) inp.value = hist[++hi]; else { hi = hist.length; inp.value = ''; } }
+    else if (e.key === 'Tab') { e.preventDefault(); complete(); }
+    else if (e.key === 'l' && e.ctrlKey) { e.preventDefault(); out.innerHTML = ''; }
+    term.scrollTop = term.scrollHeight;
+  });
+  term.addEventListener('click', () => { if (!getSelection().toString()) inp.focus(); });
+  print('Lale OS terminali (lsh 1.0). Komutlar için "yardim" yazın.', 'dim');
+  upd(); setTimeout(() => inp.focus(), 50);
+}
+
+/* Hesap Makinesi */
+function calcEval(s) {
+  s = s.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/,/g, '.');
+  const t = []; let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (/[0-9.]/.test(c)) { let j = i; while (j < s.length && /[0-9.]/.test(s[j])) j++; const v = Number(s.slice(i, j)); if (isNaN(v)) throw 0; t.push({ n: v }); i = j; continue; }
+    if ('+-*/()%'.includes(c)) { t.push({ o: c }); i++; continue; }
+    throw 0;
+  }
+  let p = 0;
+  const pk = () => t[p], is = o => t[p] && t[p].o === o;
+  function expr() { let v = term(); while (is('+') || is('-')) { const o = t[p++].o, r = term(); v = o === '+' ? v + r : v - r; } return v; }
+  function term() { let v = fac(); while (is('*') || is('/')) { const o = t[p++].o, r = fac(); v = o === '*' ? v * r : v / r; } return v; }
+  function fac() {
+    const k = pk(); if (!k) throw 0;
+    if (k.o === '-') { p++; return -fac(); }
+    if (k.o === '+') { p++; return fac(); }
+    let v;
+    if (k.o === '(') { p++; v = expr(); if (!is(')')) throw 0; p++; }
+    else if (k.n !== undefined) { p++; v = k.n; }
+    else throw 0;
+    while (is('%')) { p++; v /= 100; }
+    if (pk() && (pk().o === '(' || pk().n !== undefined)) v *= fac();
+    return v;
+  }
+  const v = expr(); if (p !== t.length || !isFinite(v)) throw 0; return v;
+}
+function fmtNum(v) { const s = String(+v.toPrecision(12)); return s.includes('e') ? s.replace('.', ',') : Number(s).toLocaleString('tr-TR', { maximumFractionDigits: 10 }); }
+function calcApp(w) {
+  w.body.innerHTML = `<div class="calc"><div class="disp"><div class="ex"></div><div class="res">0</div></div><div class="keys"></div></div>`;
+  const keys = ['C', '⌫', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '(', '0', ',', ')', '='];
+  const K = $('.keys', w.body), ex = $('.ex', w.body), res = $('.res', w.body);
+  K.innerHTML = keys.map(k => `<button data-k="${k}" class="${k === '=' ? 'eq' : '÷×−+%'.includes(k) ? 'op' : 'C⌫()'.includes(k) ? 'fn' : ''}">${k}</button>`).join('');
+  let e = '', justEq = false;
+  function show() {
+    ex.textContent = e;
+    if (!e) { res.textContent = '0'; return; }
+    try { res.textContent = fmtNum(calcEval(e)); res.style.opacity = 1; } catch (_) { res.style.opacity = .4; }
+  }
+  function press(k) {
+    if (k === 'C') { e = ''; justEq = false; }
+    else if (k === '⌫') e = e.slice(0, -1);
+    else if (k === '=') { try { const v = calcEval(e); ex.textContent = e + ' ='; e = String(+v.toPrecision(12)).replace('.', ','); res.textContent = fmtNum(v); justEq = true; return; } catch (_) { res.textContent = 'Hata'; return; } }
+    else { if (justEq && /[0-9,(]/.test(k)) e = ''; justEq = false; e += k; }
+    show();
+  }
+  K.addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) press(b.dataset.k); });
+  w.onKey = ev => {
+    const m = { '*': '×', '/': '÷', '-': '−', '+': '+', '.': ',', ',': ',', 'Enter': '=', '=': '=', 'Backspace': '⌫', 'Escape': 'C', 'Delete': 'C', '%': '%', '(': '(', ')': ')' };
+    const k = /^[0-9]$/.test(ev.key) ? ev.key : m[ev.key];
+    if (k) { ev.preventDefault(); press(k); const b = K.querySelector(`[data-k="${k}"]`); b && (b.style.filter = 'brightness(1.4)', setTimeout(() => b.style.filter = '', 100)); }
+  };
+}
+
+/* Çizim */
+function paintApp(w) {
+  const cols = ['#1b1724', '#ffffff', '#e5484d', '#f2a541', '#f7d26a', '#4fbf6b', '#2ec4b6', '#4b5be0', '#8b7cf6', '#f0587d'];
+  w.body.innerHTML = `<div class="app paint"><div class="toolbar">
+    ${cols.map((c, i) => `<button class="sw${i ? '' : ' on'}" data-c="${c}" style="background:${c}" aria-label="Renk ${c}"></button>`).join('')}
+    <input type="color" value="#1b1724" aria-label="Özel renk">
+    <input type="range" min="1" max="40" value="5" aria-label="Fırça kalınlığı" style="width:90px">
+    <button class="btn sm tog b-er">Silgi</button><span class="sp"></span>
+    <button class="btn sm b-clr">Temizle</button>
+    <button class="btn sm pri b-sv">${SV.save}Resimler'e kaydet</button>
+  </div><div class="stage"><canvas></canvas></div></div>`;
+  const stage = $('.stage', w.body), cv = $('canvas', w.body), g = cv.getContext('2d'), rng_ = $('input[type=range]', w.body), cp = $('input[type=color]', w.body);
+  let color = cols[0], erase = false, drawing = false, last = null;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  function fit() {
+    const r = stage.getBoundingClientRect(); if (!r.width || !r.height) return;
+    const old = document.createElement('canvas'); old.width = cv.width; old.height = cv.height; old.getContext('2d').drawImage(cv, 0, 0);
+    cv.width = r.width * dpr; cv.height = r.height * dpr;
+    g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(old, 0, 0);
+  }
+  onResize(w, fit);
+  const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr]; };
+  function line(a, b, pr) {
+    g.strokeStyle = erase ? '#fff' : color; g.lineCap = g.lineJoin = 'round';
+    g.lineWidth = rng_.value * dpr * (pr ? .5 + pr : 1);
+    g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+  }
+  cv.addEventListener('pointerdown', e => { drawing = true; cv.setPointerCapture(e.pointerId); last = pos(e); line(last, last, e.pointerType === 'pen' ? e.pressure : 0); });
+  cv.addEventListener('pointermove', e => { if (!drawing) return; const p = pos(e); line(last, p, e.pointerType === 'pen' ? e.pressure : 0); last = p; });
+  const stop = () => { drawing = false; };
+  cv.addEventListener('pointerup', stop); cv.addEventListener('pointercancel', stop);
+  const setColor = c => { color = c; erase = false; $('.b-er', w.body).classList.remove('on'); $$('.sw', w.body).forEach(s => s.classList.toggle('on', s.dataset.c === c)); };
+  $$('.sw', w.body).forEach(s => s.onclick = () => setColor(s.dataset.c));
+  cp.oninput = () => setColor(cp.value);
+  $('.b-er', w.body).onclick = e => { erase = !erase; e.currentTarget.classList.toggle('on', erase); };
+  $('.b-clr', w.body).onclick = () => { g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); };
+  $('.b-sv', w.body).onclick = () => {
+    if (!getNode('/Resimler')) try { mk('/Resimler', D()); } catch (e) {}
+    const name = uniqueName('/Resimler', 'çizim', '.png');
+    try { writeFile('/Resimler/' + name, cv.toDataURL('image/png')); toast(`Kaydedildi: /Resimler/${name}`, false, { l: 'Göster', f: () => openApp('files', { path: '/Resimler' }) }); } catch (e) { toast('Kaydedilemedi: depolama dolu olabilir', true); }
+  };
+}
+
+/* Görüntüleyici */
+function viewerApp(w, opts) {
+  const n = getNode(opts.path || '');
+  w.setTitle(`${split(opts.path || '')[1]} · Görüntüleyici`);
+  w.body.innerHTML = `<div class="viewer">${n ? `<img alt="${esc(split(opts.path)[1])}">` : '<p>Görüntü bulunamadı.</p>'}</div>`;
+  if (n) $('img', w.body).src = n.content;
+}
+
+/* Takvim */
+const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const RESMI = { '1-1': 'Yılbaşı', '4-23': 'Ulusal Egemenlik ve Çocuk Bayramı', '5-1': 'Emek ve Dayanışma Günü', '5-19': "Atatürk'ü Anma, Gençlik ve Spor Bayramı", '7-15': 'Demokrasi ve Millî Birlik Günü', '8-30': 'Zafer Bayramı', '10-29': 'Cumhuriyet Bayramı' };
+function calendarApp(w) {
+  const now = new Date(); let y = now.getFullYear(), m = now.getMonth();
+  w.body.innerHTML = `<div class="cal"><div class="head"><h3></h3>
+    <button class="iconbtn b-p" aria-label="Önceki ay">${SV.left}</button><button class="btn sm b-t">Bugün</button><button class="iconbtn b-n" aria-label="Sonraki ay">${SV.right}</button></div>
+    <div class="grid"></div><div class="hols"></div></div>`;
+  function render() {
+    $('h3', w.body).textContent = `${AYLAR[m]} ${y}`;
+    const first = new Date(y, m, 1), start = (first.getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate(), prev = new Date(y, m, 0).getDate();
+    let h = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map(d => `<div class="dn">${d}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const d = i - start + 1;
+      if (d < 1 || d > days) { h += `<div class="d o">${d < 1 ? prev + d : d - days}</div>`; continue; }
+      const today = d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
+      const we = i % 7 >= 5, hol = RESMI[`${m + 1}-${d}`];
+      h += `<div class="d${today ? ' today' : ''}${we ? ' we' : ''}${hol ? ' hol' : ''}"${hol ? ` title="${esc(hol)}"` : ''}>${d}</div>`;
+    }
+    $('.grid', w.body).innerHTML = h;
+    const hs = Object.entries(RESMI).filter(([k]) => +k.split('-')[0] === m + 1);
+    $('.hols', w.body).innerHTML = hs.length ? hs.map(([k, v]) => `<div><b>${k.split('-')[1]} ${AYLAR[m].slice(0, 3)}</b><span>${esc(v)}</span></div>`).join('') : `<div style="color:var(--muted)">Bu ay sabit tarihli resmî tatil yok.</div>`;
+  }
+  $('.b-p', w.body).onclick = () => { if (--m < 0) { m = 11; y--; } render(); };
+  $('.b-n', w.body).onclick = () => { if (++m > 11) { m = 0; y++; } render(); };
+  $('.b-t', w.body).onclick = () => { y = now.getFullYear(); m = now.getMonth(); render(); };
+  w.onKey = e => { if (e.key === 'ArrowLeft') $('.b-p', w.body).click(); if (e.key === 'ArrowRight') $('.b-n', w.body).click(); };
+  render();
+}
+
+/* Yılan */
+function snakeApp(w) {
+  const N = 18;
+  w.body.innerHTML = `<div class="snake"><div class="toolbar"><b class="sc">Puan: 0</b><span class="sp"></span><span class="best" style="color:var(--muted)"></span></div>
+    <div class="stage"><canvas width="540" height="540" aria-label="Yılan oyun alanı"></canvas></div>
+    <div class="pad"><span></span><button data-d="0,-1" aria-label="Yukarı">${SV.upc}</button><span></span><button data-d="-1,0" aria-label="Sola">${SV.left}</button><button data-d="0,1" aria-label="Aşağı">${SV.down}</button><button data-d="1,0" aria-label="Sağa">${SV.right}</button></div></div>`;
+  const cv = $('canvas', w.body), g = cv.getContext('2d'), S = 540 / N;
+  let snake, dir, nextDir, food, score, state = 'ready', best = store.get('snakeBest', 0), timer;
+  const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  function reset() { snake = [[8, 9], [7, 9], [6, 9]]; dir = [1, 0]; nextDir = [1, 0]; score = 0; placeFood(); upd(); }
+  function placeFood() { do { food = [Math.floor(Math.random() * N), Math.floor(Math.random() * N)]; } while (snake.some(s => s[0] === food[0] && s[1] === food[1])); }
+  function upd() { $('.sc', w.body).textContent = `Puan: ${score}`; $('.best', w.body).textContent = `Rekor: ${best}`; }
+  function draw() {
+    g.fillStyle = '#17131f'; g.fillRect(0, 0, 540, 540);
+    g.fillStyle = 'rgba(255,255,255,.03)';
+    for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) if ((x + y) % 2) g.fillRect(x * S, y * S, S, S);
+    g.fillStyle = '#f2a541'; g.beginPath(); g.arc(food[0] * S + S / 2, food[1] * S + S / 2, S * .36, 0, 7); g.fill();
+    const a = accent();
+    snake.forEach((s, i) => { g.fillStyle = i ? a : '#fff'; g.globalAlpha = i ? Math.max(.45, 1 - i / (snake.length * 1.4)) : 1; rr(s[0] * S + 2, s[1] * S + 2, S - 4, S - 4, 7); });
+    g.globalAlpha = 1;
+    if (state !== 'run') {
+      g.fillStyle = 'rgba(16,13,22,.72)'; g.fillRect(0, 0, 540, 540); g.textAlign = 'center'; g.fillStyle = '#fff';
+      g.font = '600 34px Sora, sans-serif';
+      g.fillText(state === 'over' ? 'Oyun bitti' : state === 'pause' ? 'Duraklatıldı' : 'Yılan', 270, 250);
+      g.font = '16px Inter, sans-serif'; g.fillStyle = '#c9c1d6';
+      g.fillText(state === 'over' ? `Puanın ${score}. Tekrar için Boşluk ya da dokun.` : 'Başlamak için Boşluk tuşuna bas ya da dokun.', 270, 290);
+      g.fillText('Yön: ok tuşları veya W A S D', 270, 318);
+    }
+  }
+  function rr(x, y, w_, h, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w_, h, r) : g.rect(x, y, w_, h); g.fill(); }
+  function step() {
+    dir = nextDir;
+    const head = [snake[0][0] + dir[0], snake[0][1] + dir[1]];
+    if (head[0] < 0 || head[1] < 0 || head[0] >= N || head[1] >= N || snake.some(s => s[0] === head[0] && s[1] === head[1])) {
+      state = 'over'; clearInterval(timer);
+      if (score > best) { best = score; store.set('snakeBest', best); toast(`Yeni rekor: ${best}`); }
+      upd(); draw(); return;
+    }
+    snake.unshift(head);
+    if (head[0] === food[0] && head[1] === food[1]) { score += 10; placeFood(); upd(); clearInterval(timer); timer = setInterval(step, Math.max(60, 130 - snake.length * 2)); }
+    else snake.pop();
+    draw();
+  }
+  function toggle() {
+    if (state === 'run') { state = 'pause'; clearInterval(timer); draw(); return; }
+    if (state === 'over' || state === 'ready') reset();
+    state = 'run'; clearInterval(timer); timer = setInterval(step, Math.max(60, 130 - snake.length * 2)); draw();
+  }
+  function turn(dx, dy) { if (state !== 'run') return; if (dx === -dir[0] && dy === -dir[1]) return; nextDir = [dx, dy]; }
+  w.onKey = e => {
+    const k = e.key.toLowerCase();
+    const m = { arrowup: [0, -1], w: [0, -1], arrowdown: [0, 1], s: [0, 1], arrowleft: [-1, 0], a: [-1, 0], arrowright: [1, 0], d: [1, 0] };
+    if (m[k]) { e.preventDefault(); turn(...m[k]); }
+    if (k === ' ' || k === 'enter') { e.preventDefault(); toggle(); }
+  };
+  cv.addEventListener('click', () => { if (state !== 'run') toggle(); });
+  $$('.pad button', w.body).forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); const [x, y] = b.dataset.d.split(',').map(Number); if (state !== 'run') toggle(); else turn(x, y); }));
+  let ts = null;
+  cv.addEventListener('touchstart', e => { ts = [e.touches[0].clientX, e.touches[0].clientY]; }, { passive: true });
+  cv.addEventListener('touchend', e => { if (!ts) return; const dx = e.changedTouches[0].clientX - ts[0], dy = e.changedTouches[0].clientY - ts[1]; if (Math.max(Math.abs(dx), Math.abs(dy)) > 24) Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy)); ts = null; });
+  w.onClose.push(() => clearInterval(timer));
+  reset(); draw();
+}
+
+/* Sistem İzleyici */
+function monitorApp(w) {
+  w.body.innerHTML = `<div class="mon"><div class="kpis">
+    <div class="kpi"><span>İşlemci</span><b class="k-cpu">0 %</b></div>
+    <div class="kpi"><span>Disk kullanımı</span><b class="k-disk">0 B</b></div>
+    <div class="kpi"><span>Açık pencere</span><b class="k-win">0</b></div>
+    <div class="kpi"><span>Çalışma süresi</span><b class="k-up">0:00</b></div></div>
+    <canvas aria-label="İşlemci kullanımı grafiği"></canvas>
+    <div class="tw"><table><thead><tr><th>Uygulama</th><th>PID</th><th>Durum</th><th></th></tr></thead><tbody></tbody></table></div></div>`;
+  const cv = $('canvas', w.body), g = cv.getContext('2d'), data = Array(60).fill(4);
+  let v = 6;
+  function tick() {
+    v += (Math.random() - .5) * 8 + (WM.wins.size * 3 - v) * .08; v = Math.max(1, Math.min(97, v));
+    data.push(v); data.shift();
+    $('.k-cpu', w.body).textContent = Math.round(v) + ' %';
+    $('.k-disk', w.body).textContent = fmtSize(sizeOf(fs));
+    $('.k-win', w.body).textContent = WM.wins.size;
+    const up = Math.floor((Date.now() - bootAt) / 1000);
+    $('.k-up', w.body).textContent = `${Math.floor(up / 60)}:${String(up % 60).padStart(2, '0')}`;
+    const d = Math.min(devicePixelRatio || 1, 2), W = cv.clientWidth, H = cv.clientHeight;
+    if (!W) return;
+    cv.width = W * d; cv.height = H * d; g.setTransform(d, 0, 0, d, 0, 0);
+    g.strokeStyle = 'rgba(255,255,255,.06)'; g.lineWidth = 1;
+    [.25, .5, .75].forEach(f => { g.beginPath(); g.moveTo(0, H * f); g.lineTo(W, H * f); g.stroke(); });
+    const a = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    const pts = data.map((y, i) => [i / (data.length - 1) * W, H - 6 - y / 100 * (H - 12)]);
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(...p) : g.moveTo(...p)); g.lineTo(W, H); g.lineTo(0, H); g.closePath();
+    g.globalAlpha = .18; g.fillStyle = a; g.fill(); g.globalAlpha = 1;
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(...p) : g.moveTo(...p)); g.strokeStyle = a; g.lineWidth = 2; g.stroke();
+    const e = pts[pts.length - 1]; g.fillStyle = a; g.beginPath(); g.arc(e[0] - 3, e[1], 3.5, 0, 7); g.fill();
+    $('tbody', w.body).innerHTML = [...WM.wins.values()].map(x => `<tr><td>${ico(x.app, 20)}${esc(x.title)}</td><td>${1000 + x.id}</td><td>${x.min ? 'Küçültülmüş' : x === WM.active ? 'Etkin' : 'Arka planda'}</td><td style="text-align:right">${x === w ? '' : `<button class="btn sm danger" data-kill="${x.id}">Sonlandır</button>`}</td></tr>`).join('');
+  }
+  w.body.addEventListener('click', e => { const b = e.target.closest('[data-kill]'); if (b) { const t = WM.wins.get(+b.dataset.kill); t && closeWin(t); tick(); } });
+  const t = setInterval(tick, 1000); w.onClose.push(() => clearInterval(t));
+  setTimeout(tick, 30);
+}
+
+/* Ayarlar */
+function settingsApp(w) {
+  w.body.innerHTML = `<div class="set">
+    <section><h3>Duvar kâğıdı</h3><div class="walls">${Object.entries(WALLS).map(([k, v]) => `<button data-w="${k}"><canvas width="260" height="162"></canvas>${v.name}</button>`).join('')}</div></section>
+    <section><h3>Vurgu rengi</h3><div class="swatches">${ACCENTS.map(a => `<button data-a="${a.c}" style="background:${a.c}" title="${a.n}" aria-label="${a.n}"></button>`).join('')}</div></section>
+    <section><h3>Kullanıcı</h3><div class="card rowf"><label for="set-user" style="color:var(--muted)">Görünen ad</label><input id="set-user" class="field" maxlength="24" style="flex:1;min-width:140px"><button class="btn sm pri b-user">Kaydet</button></div></section>
+    <section><h3>Sistem</h3><div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <dl class="about"><dt>Sürüm</dt><dd>Lale OS 1.0 "Tomurcuk"</dd><dt>Çekirdek</dt><dd>lale-web 1.0.0</dd><dt>Disk kullanımı</dt><dd class="a-disk"></dd><dt>Ekran</dt><dd class="a-scr"></dd></dl>
+      <div class="rowf"><button class="btn sm danger b-reset">Dosya sistemini sıfırla</button><span class="reset-q" hidden style="font-size:13px">Tüm dosyalar silinecek. <button class="btn sm danger b-yes">Evet, sıfırla</button> <button class="btn sm b-no">Vazgeç</button></span></div>
+    </div></section></div>`;
+  $$('.walls button', w.body).forEach(b => { const c = $('canvas', b); WALLS[b.dataset.w].draw(c.getContext('2d'), 260, 162); });
+  function mark() {
+    $$('.walls button', w.body).forEach(b => b.classList.toggle('on', b.dataset.w === cfg.wall));
+    $$('.swatches button', w.body).forEach(b => b.classList.toggle('on', b.dataset.a === cfg.accent));
+    $('.a-disk', w.body).textContent = fmtSize(sizeOf(fs));
+    $('.a-scr', w.body).textContent = `${innerWidth} × ${innerHeight}`;
+  }
+  $('#set-user', w.body).value = cfg.user;
+  w.body.addEventListener('click', e => {
+    const wb = e.target.closest('[data-w]'), ab = e.target.closest('[data-a]');
+    if (wb) { cfg.wall = wb.dataset.w; saveCfg(); drawWall(); mark(); }
+    if (ab) { cfg.accent = ab.dataset.a; saveCfg(); applyAccent(); mark(); }
+  });
+  const saveUser = () => { const v = $('#set-user', w.body).value.trim(); if (!v) return toast('Ad boş olamaz', true); cfg.user = v; saveCfg(); updUser(); toast('Kullanıcı adı güncellendi'); };
+  $('.b-user', w.body).onclick = saveUser;
+  $('#set-user', w.body).addEventListener('keydown', e => { if (e.key === 'Enter') saveUser(); });
+  const q = $('.reset-q', w.body), rb = $('.b-reset', w.body);
+  rb.onclick = () => { q.hidden = false; rb.hidden = true; };
+  $('.b-no', w.body).onclick = () => { q.hidden = true; rb.hidden = false; };
+  $('.b-yes', w.body).onclick = () => { fs = defaultFS(); fsChanged(); q.hidden = true; rb.hidden = false; mark(); toast('Dosya sistemi sıfırlandı'); };
+  mark();
+}
+
+/* ---------- masaüstü, başlat menüsü ---------- */
+const DESK = ['files', 'terminal', 'notes', 'calc', 'paint', 'calendar', 'snake', 'monitor', 'settings'];
+const icons = $('#icons');
+icons.innerHTML = DESK.map(id => `<button class="dicon" data-app="${id}" role="listitem">${ico(id, 48)}<span>${APPS[id].name}</span></button>`).join('');
+icons.addEventListener('click', e => {
+  const b = e.target.closest('.dicon');
+  $$('.dicon', icons).forEach(x => x.classList.toggle('sel', x === b));
+  if (b && (lastPointer === 'touch' || lastPointer === 'pen')) openApp(b.dataset.app);
+});
+icons.addEventListener('dblclick', e => { const b = e.target.closest('.dicon'); if (b && lastPointer === 'mouse') openApp(b.dataset.app); });
+icons.addEventListener('keydown', e => { const b = e.target.closest('.dicon'); if (b && e.key === 'Enter') { e.preventDefault(); openApp(b.dataset.app); } });
+$('#os').addEventListener('contextmenu', e => {
+  if (e.target.closest('.win, #taskbar, #start')) return;
+  e.preventDefault();
+  menu(e.clientX, e.clientY, [
+    { l: 'Yeni metin belgesi', f: () => openApp('notes') },
+    { l: 'Dosyaları aç', f: () => openApp('files') },
+    { l: 'Terminal aç', f: () => openApp('terminal') },
+    '-',
+    { l: 'Sonraki duvar kâğıdı', f: () => { const k = Object.keys(WALLS); cfg.wall = k[(k.indexOf(cfg.wall) + 1) % k.length]; saveCfg(); drawWall(); } },
+    { l: 'Ayarlar', f: () => openApp('settings') }
+  ]);
+});
+$('#os').addEventListener('pointerdown', e => { if (e.target === $('#wall') || e.target === icons) $$('.dicon', icons).forEach(x => x.classList.remove('sel')); });
+
+const start = $('#start'), search = $('#st-search');
+function renderStart() {
+  const q = search.value.trim().toLocaleLowerCase('tr');
+  const list = Object.entries(APPS).filter(([, a]) => !a.hidden && a.name.toLocaleLowerCase('tr').includes(q));
+  $('#st-apps').innerHTML = list.length ? list.map(([id, a], i) => `<button class="st-app${q && !i ? ' first' : ''}" data-app="${id}">${ico(id, 44)}<span>${a.name}</span></button>`).join('') : `<div class="st-empty">"${esc(search.value)}" ile eşleşen uygulama yok.</div>`;
+}
+function openStart() {
+  const h = new Date().getHours();
+  $('#st-greet').textContent = `${h < 6 ? 'İyi geceler' : h < 12 ? 'Günaydın' : h < 18 ? 'İyi günler' : 'İyi akşamlar'}, ${cfg.user}`;
+  search.value = ''; renderStart();
+  start.classList.remove('hide'); $('#startbtn').classList.add('on');
+  if (!isMobile()) setTimeout(() => search.focus(), 30);
+}
+function closeStart() { start.classList.add('hide'); $('#startbtn').classList.remove('on'); }
+$('#startbtn').onclick = () => start.classList.contains('hide') ? openStart() : closeStart();
+search.addEventListener('input', renderStart);
+search.addEventListener('keydown', e => { if (e.key === 'Enter') { const f = $('.st-app', start); f && openApp(f.dataset.app); } if (e.key === 'Escape') closeStart(); });
+$('#st-apps').addEventListener('click', e => { const b = e.target.closest('[data-app]'); b && openApp(b.dataset.app); });
+addEventListener('pointerdown', e => { if (!start.classList.contains('hide') && !start.contains(e.target) && !e.target.closest('#startbtn')) closeStart(); });
+function updUser() { $('#st-user').textContent = cfg.user; $('#st-av').textContent = cfg.user.trim()[0]?.toLocaleUpperCase('tr') || 'K'; }
+updUser();
+
+/* ---------- saat, kilit, açılış ---------- */
+let bootAt = Date.now();
+function tick() {
+  const d = new Date(), t = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  $('#tr-t').textContent = t; $('#lk-t').textContent = t;
+  $('#tr-d').textContent = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+  $('#lk-d').textContent = d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+tick(); setInterval(tick, 1000);
+$('#tray').onclick = () => openApp('calendar');
+const lock = $('#lock');
+const doLock = () => { closeStart(); lock.classList.remove('hide'); lock.focus(); };
+const unlock = () => lock.classList.add('hide');
+$('#st-lock').onclick = doLock;
+lock.addEventListener('click', unlock);
+function boot(then) {
+  const b = $('#boot'), bar = $('#boot-bar'), reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  b.classList.remove('hide'); bar.style.transition = 'none'; bar.style.width = '0';
+  requestAnimationFrame(() => { bar.style.transition = `width ${reduce ? 200 : 1300}ms cubic-bezier(.4,.1,.2,1)`; bar.style.width = '100%'; });
+  setTimeout(() => { b.classList.add('hide'); bootAt = Date.now(); then && then(); }, reduce ? 300 : 1500);
+}
+$('#st-restart').onclick = () => { closeStart(); [...WM.wins.values()].forEach(closeWin); boot(); };
+$('#st-off').onclick = () => { closeStart(); [...WM.wins.values()].forEach(closeWin); $('#off').hidden = false; };
+$('#poweron').onclick = () => { $('#off').hidden = true; boot(); };
+
+/* ---------- klavye ---------- */
+addEventListener('keydown', e => {
+  if (!lock.classList.contains('hide')) { unlock(); e.preventDefault(); return; }
+  if (e.key === 'Escape') { closeMenu(); closeStart(); }
+  if (e.altKey && e.key.toLowerCase() === 'l') { e.preventDefault(); doLock(); return; }
+  if (e.key === 'Meta' || (e.ctrlKey && e.key === 'Escape')) { start.classList.contains('hide') ? openStart() : closeStart(); return; }
+  const t = e.target, typing = t.matches && t.matches('input, textarea, [contenteditable]');
+  if (!typing && WM.active && !WM.active.min && WM.active.onKey) WM.active.onKey(e);
+});
+
+addEventListener('resize', () => { drawWall(); if (isMobile()) WM.wins.forEach(w => w.el.classList.add('max')); });
+drawWall();
+document.fonts && document.fonts.ready.then(() => {});
+boot(() => { if (!store.get('seen', false)) { store.set('seen', true); openFile('/Belgeler/hoş-geldin.txt'); } });
+})();
+</script>
+
+</body>
+</html>
